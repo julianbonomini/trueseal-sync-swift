@@ -18,8 +18,8 @@ let package = Package(
         // temporarily swap url/checksum for: path: "HushSyncFFI.xcframework"
         .binaryTarget(
             name: "HushSyncFFI",
-            url: "https://github.com/placeholder/hush-sync-swift/releases/download/v0.0.0/HushSyncFFI.xcframework.zip",
-            checksum: "0000000000000000000000000000000000000000000000000000000000000000"
+            url: "https://github.com/julianbonomini/hush-sync-swift/releases/download/v0.0.5/HushSyncFFI.xcframework.zip",
+            checksum: "8584a6bb6d388b4cb2c1376fef70a58408c3d150dc28b89b73676565b4f15b96"
         ),
 
         // ── 2. Generated UniFFI Swift bindings ────────────────────────────────
