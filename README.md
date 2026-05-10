@@ -186,4 +186,4 @@ No UniFFI types, raw bytes, or Noise Protocol concepts cross the public boundary
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Apache 2.0 — see [LICENSE](LICENSE).
