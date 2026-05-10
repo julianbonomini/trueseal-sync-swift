@@ -66,6 +66,9 @@ for TARGET in "${TARGETS[@]}"; do
         cd "$RUST_DIR"
         cargo build "${CARGO_FLAGS[@]}" --target "$TARGET" 2>&1 | tail -3
     )
+    # Verify the static archive was produced before continuing.
+    EXPECTED="$BUILD_DIR/$TARGET/$PROFILE/$LIB_NAME"
+    [[ -f "$EXPECTED" ]] || fail "Missing $EXPECTED after build — is staticlib in crate-type?"
     ok "$TARGET"
 done
 

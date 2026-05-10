@@ -55,6 +55,15 @@ jobs:
 
       # ── Build ────────────────────────────────────────────────────────────────
 
+      # hush-sync Cargo.toml only declares cdylib + lib (rlib); XCFramework
+      # needs a static archive (.a). Patch before building — ephemeral in CI.
+      - name: Add staticlib to hush-sync crate-type
+        run: |
+          sed -i '' \
+            's/crate-type = \["cdylib", "lib"\]/crate-type = ["cdylib", "staticlib", "lib"]/' \
+            hush-sync/Cargo.toml
+          grep crate-type hush-sync/Cargo.toml   # confirm
+
       - name: Build XCFramework
         working-directory: hush-sync-swift
         run: bash scripts/build-xcframework.sh
