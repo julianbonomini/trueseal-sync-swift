@@ -10,13 +10,41 @@ E2EE, local-first sync between devices.  No FFI, no Noise Protocol, no raw keys.
 
 - Xcode 15 / Swift 5.9+
 - macOS 13+ · iOS 16+
-- Rust toolchain + `rustup` (to build the XCFramework)
 
 ---
 
-## Build the XCFramework
+## Add to your project
 
-Run once before opening in Xcode or running `swift build`:
+### Swift Package Manager
+
+Add the package via Xcode (**File → Add Package Dependencies…**) or in `Package.swift`:
+
+```swift
+// Package.swift
+dependencies: [
+    .package(url: "https://github.com/your-org/hush-sync-swift", from: "0.1.0"),
+],
+targets: [
+    .target(name: "YourApp", dependencies: ["HushSync"]),
+]
+```
+
+No Rust toolchain required — a pre-built XCFramework is attached to every
+[GitHub Release](https://github.com/your-org/hush-sync-swift/releases) and
+downloaded automatically by SPM.
+
+---
+
+## Contributing / local development
+
+Requires a Rust toolchain and the sibling repos checked out:
+
+```
+hush/
+  hush-noise/
+  hush-sync/
+  hush-sync-swift/   ← this repo
+```
 
 ```bash
 # Install Rust targets (one-time)
@@ -25,30 +53,28 @@ rustup target add \
     aarch64-apple-ios \
     aarch64-apple-ios-sim x86_64-apple-ios
 
-# Build
+# Build XCFramework + generate Swift bindings
 bash scripts/build-xcframework.sh
 ```
 
-This produces `HushSyncFFI.xcframework` and installs generated Swift bindings
-into `Sources/HushSyncBindings/`.
-
----
-
-## Add to your project
-
-### Swift Package Manager
+Then temporarily swap the `binaryTarget` in `Package.swift` to:
 
 ```swift
-// Package.swift
-dependencies: [
-    .package(path: "../hush-sync-swift"),   // local
-    // or a tagged release:
-    // .package(url: "https://github.com/your-org/hush-sync-swift", from: "0.1.0"),
-],
-targets: [
-    .target(name: "YourApp", dependencies: ["HushSync"]),
-]
+.binaryTarget(name: "HushSyncFFI", path: "HushSyncFFI.xcframework")
 ```
+
+> Don't commit that change — CI stamps the `url`/`checksum` on every release.
+
+### Releasing
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The [release workflow](.github/workflows/release.yml) builds the XCFramework,
+creates a GitHub Release with the zip as an asset, and stamps the correct
+`url`/`checksum` back into `Package.swift` automatically.
 
 ---
 

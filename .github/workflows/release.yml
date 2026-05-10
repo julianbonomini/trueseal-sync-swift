@@ -1,0 +1,121 @@
+name: Release XCFramework
+
+# Triggered by a version tag, e.g.: git tag v0.1.0 && git push origin v0.1.0
+on:
+  push:
+    tags:
+      - 'v[0-9]*'
+
+# Write access needed to push the updated Package.swift back to main
+# and to create the GitHub Release.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14   # Apple Silicon, Xcode 15+
+
+    steps:
+      # ── Checkouts ───────────────────────────────────────────────────────────
+      # Repos must be siblings so the Cargo path deps (../hush-noise/rust)
+      # and the build script (../hush-sync) resolve correctly.
+
+      - name: Checkout hush-sync-swift
+        uses: actions/checkout@v4
+        with:
+          path: hush-sync-swift
+          # Fetch full history so we can push back to main later.
+          fetch-depth: 0
+
+      - name: Checkout hush-sync
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/hush-sync
+          path: hush-sync
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout hush-noise
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/hush-noise
+          path: hush-noise
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Rust toolchain ───────────────────────────────────────────────────────
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: >-
+            aarch64-apple-darwin,x86_64-apple-darwin,
+            aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+
+      - name: Cache Rust build artefacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hush-sync -> target
+
+      # ── Build ────────────────────────────────────────────────────────────────
+
+      - name: Build XCFramework
+        working-directory: hush-sync-swift
+        run: bash scripts/build-xcframework.sh
+
+      # ── Package ──────────────────────────────────────────────────────────────
+
+      - name: Zip XCFramework
+        working-directory: hush-sync-swift
+        run: zip -r HushSyncFFI.xcframework.zip HushSyncFFI.xcframework
+
+      - name: Compute checksum
+        id: checksum
+        working-directory: hush-sync-swift
+        run: |
+          echo "value=$(swift package compute-checksum HushSyncFFI.xcframework.zip)" \
+            >> "$GITHUB_OUTPUT"
+
+      # ── Stamp Package.swift ──────────────────────────────────────────────────
+      # Replaces the placeholder url and checksum with real values so consumers
+      # get the correct binary when they resolve the package.
+
+      - name: Update Package.swift with release URL and checksum
+        working-directory: hush-sync-swift
+        env:
+          TAG:      ${{ github.ref_name }}
+          CHECKSUM: ${{ steps.checksum.outputs.value }}
+          REPO:     ${{ github.repository }}
+        run: |
+          URL="https://github.com/${REPO}/releases/download/${TAG}/HushSyncFFI.xcframework.zip"
+          sed -i '' \
+            -e "s|url: \".*HushSyncFFI.xcframework.zip\"|url: \"${URL}\"|" \
+            -e "s|checksum: \"[0-9a-f]*\"|checksum: \"${CHECKSUM}\"|" \
+            Package.swift
+          echo "Stamped URL:      $URL"
+          echo "Stamped checksum: $CHECKSUM"
+
+      # ── Commit generated files back to main ──────────────────────────────────
+      # Updates Package.swift (url+checksum) and the generated UniFFI Swift
+      # bindings (Sources/HushSyncBindings/hush_sync.swift) so the repo always
+      # reflects the latest release without requiring a local build.
+
+      - name: Commit Package.swift + bindings to main
+        working-directory: hush-sync-swift
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Package.swift Sources/HushSyncBindings/
+          # Only commit if there are actual changes (idempotent re-runs).
+          git diff --cached --quiet \
+            || git commit -m "chore: release ${TAG} [skip ci]"
+          git push origin HEAD:main
+
+      # ── GitHub Release ───────────────────────────────────────────────────────
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: hush-sync-swift/HushSyncFFI.xcframework.zip
+          generate_release_notes: true
+          fail_on_unmatched_files: true
