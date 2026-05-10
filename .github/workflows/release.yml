@@ -32,17 +32,12 @@ jobs:
         with:
           repository: ${{ github.repository_owner }}/hush-sync
           path: hush-sync
-          # GH_PAT must be a fine-grained PAT with read access (Contents +
-          # Metadata) to hush-sync and hush-noise. GITHUB_TOKEN is scoped to
-          # hush-sync-swift only and cannot access sibling private repos.
-          token: ${{ secrets.GH_PAT }}
 
       - name: Checkout hush-noise
         uses: actions/checkout@v4
         with:
           repository: ${{ github.repository_owner }}/hush-noise
           path: hush-noise
-          token: ${{ secrets.GH_PAT }}
 
       # ── Rust toolchain ───────────────────────────────────────────────────────
 
