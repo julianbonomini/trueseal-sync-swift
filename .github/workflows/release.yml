@@ -10,6 +10,7 @@ on:
 # and to create the GitHub Release.
 permissions:
   contents: write
+  workflows: write
 
 jobs:
   release:
