@@ -13,13 +13,15 @@ let package = Package(
     ],
     targets: [
         // ── 1. Compiled Rust binary (XCFramework) ────────────────────────────
-        // Stamped by CI on every tagged release via .github/workflows/release.yml.
-        // For local development: run scripts/build-xcframework.sh, then
-        // temporarily swap url/checksum for: path: "HushSyncFFI.xcframework"
+        // path: is used for local development and as the canonical form in source
+        // control. CI swaps this to url:+checksum: in-memory at release time
+        // (without committing back), so the tag always contains path: and works
+        // for both local references and released packages.
+        //
+        // Before using locally: run scripts/build-xcframework.sh once.
         .binaryTarget(
             name: "HushSyncFFI",
-            url: "https://github.com/julianbonomini/hush-sync-swift/releases/download/v0.0.5/HushSyncFFI.xcframework.zip",
-            checksum: "8584a6bb6d388b4cb2c1376fef70a58408c3d150dc28b89b73676565b4f15b96"
+            path: "HushSyncFFI.xcframework"
         ),
 
         // ── 2. Generated UniFFI Swift bindings ────────────────────────────────
