@@ -1,4 +1,5 @@
 import Foundation
+@_implementationOnly import HushSyncBindings
 
 /// All errors surfaced by ``HushSyncClient``.
 ///

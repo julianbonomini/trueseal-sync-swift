@@ -95,7 +95,6 @@ public final class HushSyncClient: @unchecked Sendable {
             throw HushSyncError.invalidRelayURL
         }
         let relayAddr = "\(host):\(port)"
-        let relayPub: [UInt8] = Array(relayPublicKey)
         let baseDir = storageDirectory.path
 
         // Create continuations before the session so callbacks can fire immediately.
@@ -114,7 +113,7 @@ public final class HushSyncClient: @unchecked Sendable {
                 baseDir: baseDir,
                 namespace: namespace,
                 relayAddr: relayAddr,
-                relayPub: relayPub,
+                relayPub: relayPublicKey,
                 onMessage:           BlobCallbackHandler(continuation: blobCont),
                 onRemovedFromGroup:  MemberRemovedCallbackHandler(continuation: memberCont),
                 onGroupDestroyed:    GroupDestroyedCallbackHandler(continuation: memberCont),
@@ -187,10 +186,9 @@ public final class HushSyncClient: @unchecked Sendable {
     /// - Throws: ``HushSyncError/notInGroup`` if pairing has not completed.
     ///           ``HushSyncError/groupDestroyed`` if the group has been destroyed.
     public func publish(_ data: Data) async throws {
-        let bytes: [UInt8] = Array(data)
         try await Task.detached(priority: .userInitiated) { [session = self.session] in
             do {
-                try session.send(blob: bytes)
+                try session.send(blob: data)
             } catch let e as SessionError {
                 throw HushSyncError(from: e)
             }
@@ -253,7 +251,7 @@ public final class HushSyncClient: @unchecked Sendable {
 
 // MARK: - Default storage directory
 
-private extension URL {
+public extension URL {
     static var defaultHushSyncStorage: URL {
         let appSupport = FileManager.default.urls(
             for: .applicationSupportDirectory,

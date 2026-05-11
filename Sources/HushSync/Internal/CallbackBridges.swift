@@ -17,13 +17,8 @@ final class BlobCallbackHandler: MessageCallback {
         self.continuation = continuation
     }
 
-    func onMessage(blob: [UInt8], senderNoisePub: [UInt8]) {
-        continuation.yield(
-            ReceivedBlob(
-                data: Data(blob),
-                senderPublicKey: Data(senderNoisePub)
-            )
-        )
+    func onMessage(blob: Data, senderNoisePub: Data) {
+        continuation.yield(ReceivedBlob(data: blob, senderPublicKey: senderNoisePub))
     }
 }
 

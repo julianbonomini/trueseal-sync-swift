@@ -117,6 +117,9 @@ jobs:
           git diff --cached --quiet \
             || git commit -m "chore: release ${TAG} [skip ci]"
           git push origin HEAD:main
+          # Move the tag to this commit so SPM checks out the correct Package.swift.
+          git tag -f "${TAG}"
+          git push origin -f "refs/tags/${TAG}"
 
       # ── GitHub Release ───────────────────────────────────────────────────────
 
