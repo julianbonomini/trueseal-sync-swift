@@ -8,11 +8,11 @@ import Foundation
 // might be in a separate module, or it might be compiled inline into
 // this module. This is a bit of light hackery to work with both.
 #if canImport(hush_syncFFI)
-    import hush_syncFFI
+import hush_syncFFI
 #endif
 
-private extension RustBuffer {
-    /// Allocate a new buffer, copying the contents of a `UInt8` array.
+fileprivate extension RustBuffer {
+    // Allocate a new buffer, copying the contents of a `UInt8` array.
     init(bytes: [UInt8]) {
         let rbuf = bytes.withUnsafeBufferPointer { ptr in
             RustBuffer.from(ptr)
@@ -21,21 +21,21 @@ private extension RustBuffer {
     }
 
     static func empty() -> RustBuffer {
-        RustBuffer(capacity: 0, len: 0, data: nil)
+        RustBuffer(capacity: 0, len:0, data: nil)
     }
 
     static func from(_ ptr: UnsafeBufferPointer<UInt8>) -> RustBuffer {
         try! rustCall { ffi_hush_sync_rustbuffer_from_bytes(ForeignBytes(bufferPointer: ptr), $0) }
     }
 
-    /// Frees the buffer in place.
-    /// The buffer must not be used after this is called.
+    // Frees the buffer in place.
+    // The buffer must not be used after this is called.
     func deallocate() {
         try! rustCall { ffi_hush_sync_rustbuffer_free(self, $0) }
     }
 }
 
-private extension ForeignBytes {
+fileprivate extension ForeignBytes {
     init(bufferPointer: UnsafeBufferPointer<UInt8>) {
         self.init(len: Int32(bufferPointer.count), data: bufferPointer.baseAddress)
     }
@@ -48,7 +48,7 @@ private extension ForeignBytes {
 // Helper classes/extensions that don't change.
 // Someday, this will be in a library of its own.
 
-private extension Data {
+fileprivate extension Data {
     init(rustBuffer: RustBuffer) {
         self.init(
             bytesNoCopy: rustBuffer.data!,
@@ -72,15 +72,15 @@ private extension Data {
 //
 // Instead, the read() method and these helper functions input a tuple of data
 
-private func createReader(data: Data) -> (data: Data, offset: Data.Index) {
+fileprivate func createReader(data: Data) -> (data: Data, offset: Data.Index) {
     (data: data, offset: 0)
 }
 
-/// Reads an integer at the current offset, in big-endian order, and advances
-/// the offset on success. Throws if reading the integer would move the
-/// offset past the end of the buffer.
-private func readInt<T: FixedWidthInteger>(_ reader: inout (data: Data, offset: Data.Index)) throws -> T {
-    let range = reader.offset ..< reader.offset + MemoryLayout<T>.size
+// Reads an integer at the current offset, in big-endian order, and advances
+// the offset on success. Throws if reading the integer would move the
+// offset past the end of the buffer.
+fileprivate func readInt<T: FixedWidthInteger>(_ reader: inout (data: Data, offset: Data.Index)) throws -> T {
+    let range = reader.offset..<reader.offset + MemoryLayout<T>.size
     guard reader.data.count >= range.upperBound else {
         throw UniffiInternalError.bufferOverflow
     }
@@ -90,38 +90,38 @@ private func readInt<T: FixedWidthInteger>(_ reader: inout (data: Data, offset: 
         return value as! T
     }
     var value: T = 0
-    let _ = withUnsafeMutableBytes(of: &value) { reader.data.copyBytes(to: $0, from: range) }
+    let _ = withUnsafeMutableBytes(of: &value, { reader.data.copyBytes(to: $0, from: range)})
     reader.offset = range.upperBound
     return value.bigEndian
 }
 
-/// Reads an arbitrary number of bytes, to be used to read
-/// raw bytes, this is useful when lifting strings
-private func readBytes(_ reader: inout (data: Data, offset: Data.Index), count: Int) throws -> [UInt8] {
-    let range = reader.offset ..< (reader.offset + count)
+// Reads an arbitrary number of bytes, to be used to read
+// raw bytes, this is useful when lifting strings
+fileprivate func readBytes(_ reader: inout (data: Data, offset: Data.Index), count: Int) throws -> Array<UInt8> {
+    let range = reader.offset..<(reader.offset+count)
     guard reader.data.count >= range.upperBound else {
         throw UniffiInternalError.bufferOverflow
     }
     var value = [UInt8](repeating: 0, count: count)
-    value.withUnsafeMutableBufferPointer { buffer in
+    value.withUnsafeMutableBufferPointer({ buffer in
         reader.data.copyBytes(to: buffer, from: range)
-    }
+    })
     reader.offset = range.upperBound
     return value
 }
 
-/// Reads a float at the current offset.
-private func readFloat(_ reader: inout (data: Data, offset: Data.Index)) throws -> Float {
-    return try Float(bitPattern: readInt(&reader))
+// Reads a float at the current offset.
+fileprivate func readFloat(_ reader: inout (data: Data, offset: Data.Index)) throws -> Float {
+    return Float(bitPattern: try readInt(&reader))
 }
 
-/// Reads a float at the current offset.
-private func readDouble(_ reader: inout (data: Data, offset: Data.Index)) throws -> Double {
-    return try Double(bitPattern: readInt(&reader))
+// Reads a float at the current offset.
+fileprivate func readDouble(_ reader: inout (data: Data, offset: Data.Index)) throws -> Double {
+    return Double(bitPattern: try readInt(&reader))
 }
 
-/// Indicates if the offset has reached the end of the buffer.
-private func hasRemaining(_ reader: (data: Data, offset: Data.Index)) -> Bool {
+// Indicates if the offset has reached the end of the buffer.
+fileprivate func hasRemaining(_ reader: (data: Data, offset: Data.Index)) -> Bool {
     return reader.offset < reader.data.count
 }
 
@@ -129,34 +129,34 @@ private func hasRemaining(_ reader: (data: Data, offset: Data.Index)) -> Bool {
 // struct, but we use standalone functions instead in order to make external
 // types work.  See the above discussion on Readers for details.
 
-private func createWriter() -> [UInt8] {
+fileprivate func createWriter() -> [UInt8] {
     return []
 }
 
-private func writeBytes<S: Sequence>(_ writer: inout [UInt8], _ byteArr: S) where S.Element == UInt8 {
+fileprivate func writeBytes<S>(_ writer: inout [UInt8], _ byteArr: S) where S: Sequence, S.Element == UInt8 {
     writer.append(contentsOf: byteArr)
 }
 
-/// Writes an integer in big-endian order.
-///
-/// Warning: make sure what you are trying to write
-/// is in the correct type!
-private func writeInt<T: FixedWidthInteger>(_ writer: inout [UInt8], _ value: T) {
+// Writes an integer in big-endian order.
+//
+// Warning: make sure what you are trying to write
+// is in the correct type!
+fileprivate func writeInt<T: FixedWidthInteger>(_ writer: inout [UInt8], _ value: T) {
     var value = value.bigEndian
     withUnsafeBytes(of: &value) { writer.append(contentsOf: $0) }
 }
 
-private func writeFloat(_ writer: inout [UInt8], _ value: Float) {
+fileprivate func writeFloat(_ writer: inout [UInt8], _ value: Float) {
     writeInt(&writer, value.bitPattern)
 }
 
-private func writeDouble(_ writer: inout [UInt8], _ value: Double) {
+fileprivate func writeDouble(_ writer: inout [UInt8], _ value: Double) {
     writeInt(&writer, value.bitPattern)
 }
 
-/// Protocol for types that transfer other types across the FFI. This is
-/// analogous to the Rust trait of the same name.
-private protocol FfiConverter {
+// Protocol for types that transfer other types across the FFI. This is
+// analogous to the Rust trait of the same name.
+fileprivate protocol FfiConverter {
     associatedtype FfiType
     associatedtype SwiftType
 
@@ -166,33 +166,33 @@ private protocol FfiConverter {
     static func write(_ value: SwiftType, into buf: inout [UInt8])
 }
 
-/// Types conforming to `Primitive` pass themselves directly over the FFI.
-private protocol FfiConverterPrimitive: FfiConverter where FfiType == SwiftType {}
+// Types conforming to `Primitive` pass themselves directly over the FFI.
+fileprivate protocol FfiConverterPrimitive: FfiConverter where FfiType == SwiftType { }
 
 extension FfiConverterPrimitive {
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func lift(_ value: FfiType) throws -> SwiftType {
         return value
     }
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func lower(_ value: SwiftType) -> FfiType {
         return value
     }
 }
 
-/// Types conforming to `FfiConverterRustBuffer` lift and lower into a `RustBuffer`.
-/// Used for complex types where it's hard to write a custom lift/lower.
-private protocol FfiConverterRustBuffer: FfiConverter where FfiType == RustBuffer {}
+// Types conforming to `FfiConverterRustBuffer` lift and lower into a `RustBuffer`.
+// Used for complex types where it's hard to write a custom lift/lower.
+fileprivate protocol FfiConverterRustBuffer: FfiConverter where FfiType == RustBuffer {}
 
 extension FfiConverterRustBuffer {
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func lift(_ buf: RustBuffer) throws -> SwiftType {
         var reader = createReader(data: Data(rustBuffer: buf))
         let value = try read(from: &reader)
@@ -203,19 +203,18 @@ extension FfiConverterRustBuffer {
         return value
     }
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func lower(_ value: SwiftType) -> RustBuffer {
-        var writer = createWriter()
-        write(value, into: &writer)
-        return RustBuffer(bytes: writer)
+          var writer = createWriter()
+          write(value, into: &writer)
+          return RustBuffer(bytes: writer)
     }
 }
-
-/// An error type for FFI errors. These errors occur at the UniFFI level, not
-/// the library level.
-private enum UniffiInternalError: LocalizedError {
+// An error type for FFI errors. These errors occur at the UniFFI level, not
+// the library level.
+fileprivate enum UniffiInternalError: LocalizedError {
     case bufferOverflow
     case incompleteData
     case unexpectedOptionalTag
@@ -226,7 +225,7 @@ private enum UniffiInternalError: LocalizedError {
     case unexpectedStaleHandle
     case rustPanic(_ message: String)
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .bufferOverflow: return "Reading the requested value would read past the end of the buffer"
         case .incompleteData: return "The buffer still has data after lifting its containing value"
@@ -241,24 +240,24 @@ private enum UniffiInternalError: LocalizedError {
     }
 }
 
-private extension NSLock {
+fileprivate extension NSLock {
     func withLock<T>(f: () throws -> T) rethrows -> T {
-        lock()
+        self.lock()
         defer { self.unlock() }
         return try f()
     }
 }
 
-private let CALL_SUCCESS: Int8 = 0
-private let CALL_ERROR: Int8 = 1
-private let CALL_UNEXPECTED_ERROR: Int8 = 2
-private let CALL_CANCELLED: Int8 = 3
+fileprivate let CALL_SUCCESS: Int8 = 0
+fileprivate let CALL_ERROR: Int8 = 1
+fileprivate let CALL_UNEXPECTED_ERROR: Int8 = 2
+fileprivate let CALL_CANCELLED: Int8 = 3
 
-private extension RustCallStatus {
+fileprivate extension RustCallStatus {
     init() {
         self.init(
             code: CALL_SUCCESS,
-            errorBuf: RustBuffer(
+            errorBuf: RustBuffer.init(
                 capacity: 0,
                 len: 0,
                 data: nil
@@ -274,8 +273,7 @@ private func rustCall<T>(_ callback: (UnsafeMutablePointer<RustCallStatus>) -> T
 
 private func rustCallWithError<T, E: Swift.Error>(
     _ errorHandler: @escaping (RustBuffer) throws -> E,
-    _ callback: (UnsafeMutablePointer<RustCallStatus>) -> T
-) throws -> T {
+    _ callback: (UnsafeMutablePointer<RustCallStatus>) -> T) throws -> T {
     try makeRustCall(callback, errorHandler: errorHandler)
 }
 
@@ -284,7 +282,7 @@ private func makeRustCall<T, E: Swift.Error>(
     errorHandler: ((RustBuffer) throws -> E)?
 ) throws -> T {
     uniffiEnsureInitialized()
-    var callStatus = RustCallStatus()
+    var callStatus = RustCallStatus.init()
     let returnedVal = callback(&callStatus)
     try uniffiCheckCallStatus(callStatus: callStatus, errorHandler: errorHandler)
     return returnedVal
@@ -295,44 +293,44 @@ private func uniffiCheckCallStatus<E: Swift.Error>(
     errorHandler: ((RustBuffer) throws -> E)?
 ) throws {
     switch callStatus.code {
-    case CALL_SUCCESS:
-        return
+        case CALL_SUCCESS:
+            return
 
-    case CALL_ERROR:
-        if let errorHandler = errorHandler {
-            throw try errorHandler(callStatus.errorBuf)
-        } else {
-            callStatus.errorBuf.deallocate()
-            throw UniffiInternalError.unexpectedRustCallError
-        }
+        case CALL_ERROR:
+            if let errorHandler = errorHandler {
+                throw try errorHandler(callStatus.errorBuf)
+            } else {
+                callStatus.errorBuf.deallocate()
+                throw UniffiInternalError.unexpectedRustCallError
+            }
 
-    case CALL_UNEXPECTED_ERROR:
-        // When the rust code sees a panic, it tries to construct a RustBuffer
-        // with the message.  But if that code panics, then it just sends back
-        // an empty buffer.
-        if callStatus.errorBuf.len > 0 {
-            throw try UniffiInternalError.rustPanic(FfiConverterString.lift(callStatus.errorBuf))
-        } else {
-            callStatus.errorBuf.deallocate()
-            throw UniffiInternalError.rustPanic("Rust panic")
-        }
+        case CALL_UNEXPECTED_ERROR:
+            // When the rust code sees a panic, it tries to construct a RustBuffer
+            // with the message.  But if that code panics, then it just sends back
+            // an empty buffer.
+            if callStatus.errorBuf.len > 0 {
+                throw UniffiInternalError.rustPanic(try FfiConverterString.lift(callStatus.errorBuf))
+            } else {
+                callStatus.errorBuf.deallocate()
+                throw UniffiInternalError.rustPanic("Rust panic")
+            }
 
-    case CALL_CANCELLED:
-        fatalError("Cancellation not supported yet")
+        case CALL_CANCELLED:
+            fatalError("Cancellation not supported yet")
 
-    default:
-        throw UniffiInternalError.unexpectedRustCallStatusCode
+        default:
+            throw UniffiInternalError.unexpectedRustCallStatusCode
     }
 }
 
 private func uniffiTraitInterfaceCall<T>(
     callStatus: UnsafeMutablePointer<RustCallStatus>,
     makeCall: () throws -> T,
-    writeReturn: (T) -> Void
+    writeReturn: (T) -> ()
 ) {
     do {
         try writeReturn(makeCall())
-    } catch {
+    } catch let error {
         callStatus.pointee.code = CALL_UNEXPECTED_ERROR
         callStatus.pointee.errorBuf = FfiConverterString.lower(String(describing: error))
     }
@@ -341,7 +339,7 @@ private func uniffiTraitInterfaceCall<T>(
 private func uniffiTraitInterfaceCallWithError<T, E>(
     callStatus: UnsafeMutablePointer<RustCallStatus>,
     makeCall: () throws -> T,
-    writeReturn: (T) -> Void,
+    writeReturn: (T) -> (),
     lowerError: (E) -> RustBuffer
 ) {
     do {
@@ -354,8 +352,7 @@ private func uniffiTraitInterfaceCallWithError<T, E>(
         callStatus.pointee.errorBuf = FfiConverterString.lower(String(describing: error))
     }
 }
-
-private class UniffiHandleMap<T> {
+fileprivate class UniffiHandleMap<T> {
     private var map: [UInt64: T] = [:]
     private let lock = NSLock()
     private var currentHandle: UInt64 = 1
@@ -369,7 +366,7 @@ private class UniffiHandleMap<T> {
         }
     }
 
-    func get(handle: UInt64) throws -> T {
+     func get(handle: UInt64) throws -> T {
         try lock.withLock {
             guard let obj = map[handle] else {
                 throw UniffiInternalError.unexpectedStaleHandle
@@ -389,60 +386,64 @@ private class UniffiHandleMap<T> {
     }
 
     var count: Int {
-        map.count
+        get {
+            map.count
+        }
     }
 }
+
 
 // Public interface members begin here.
 
+
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
-private struct FfiConverterUInt32: FfiConverterPrimitive {
+fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
     typealias FfiType = UInt32
     typealias SwiftType = UInt32
 
-    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt32 {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt32 {
         return try lift(readInt(&buf))
     }
 
-    static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
         writeInt(&buf, lower(value))
     }
 }
 
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
-private struct FfiConverterBool: FfiConverter {
+fileprivate struct FfiConverterBool : FfiConverter {
     typealias FfiType = Int8
     typealias SwiftType = Bool
 
-    static func lift(_ value: Int8) throws -> Bool {
+    public static func lift(_ value: Int8) throws -> Bool {
         return value != 0
     }
 
-    static func lower(_ value: Bool) -> Int8 {
+    public static func lower(_ value: Bool) -> Int8 {
         return value ? 1 : 0
     }
 
-    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Bool {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Bool {
         return try lift(readInt(&buf))
     }
 
-    static func write(_ value: Bool, into buf: inout [UInt8]) {
+    public static func write(_ value: Bool, into buf: inout [UInt8]) {
         writeInt(&buf, lower(value))
     }
 }
 
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
-private struct FfiConverterString: FfiConverter {
+fileprivate struct FfiConverterString: FfiConverter {
     typealias SwiftType = String
     typealias FfiType = RustBuffer
 
-    static func lift(_ value: RustBuffer) throws -> String {
+    public static func lift(_ value: RustBuffer) throws -> String {
         defer {
             value.deallocate()
         }
@@ -453,7 +454,7 @@ private struct FfiConverterString: FfiConverter {
         return String(bytes: bytes, encoding: String.Encoding.utf8)!
     }
 
-    static func lower(_ value: String) -> RustBuffer {
+    public static func lower(_ value: String) -> RustBuffer {
         return value.utf8CString.withUnsafeBufferPointer { ptr in
             // The swift string gives us int8_t, we want uint8_t.
             ptr.withMemoryRebound(to: UInt8.self) { ptr in
@@ -464,12 +465,12 @@ private struct FfiConverterString: FfiConverter {
         }
     }
 
-    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> String {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> String {
         let len: Int32 = try readInt(&buf)
-        return try String(bytes: readBytes(&buf, count: Int(len)), encoding: String.Encoding.utf8)!
+        return String(bytes: try readBytes(&buf, count: Int(len)), encoding: String.Encoding.utf8)!
     }
 
-    static func write(_ value: String, into buf: inout [UInt8]) {
+    public static func write(_ value: String, into buf: inout [UInt8]) {
         let len = Int32(value.utf8.count)
         writeInt(&buf, len)
         writeBytes(&buf, value.utf8)
@@ -477,69 +478,73 @@ private struct FfiConverterString: FfiConverter {
 }
 
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
-private struct FfiConverterData: FfiConverterRustBuffer {
+fileprivate struct FfiConverterData: FfiConverterRustBuffer {
     typealias SwiftType = Data
 
-    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Data {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Data {
         let len: Int32 = try readInt(&buf)
-        return try Data(readBytes(&buf, count: Int(len)))
+        return Data(try readBytes(&buf, count: Int(len)))
     }
 
-    static func write(_ value: Data, into buf: inout [UInt8]) {
+    public static func write(_ value: Data, into buf: inout [UInt8]) {
         let len = Int32(value.count)
         writeInt(&buf, len)
         writeBytes(&buf, value)
     }
 }
 
+
+
+
 /**
  * A connected hush-sync session over TCP.
  *
  * Create via `HushFfiSession.create(...)`.  All key arguments are raw bytes.
  */
-public protocol HushFfiSessionProtocol: AnyObject {
+public protocol HushFfiSessionProtocol : AnyObject {
+    
     /**
      * Admit a pending member identified by their opaque `token` from `onMemberRequest`.
      *
      * Returns `true` if admitted, `false` if the token is unknown or the pairing window closed.
      */
-    func acceptMember(token: String) -> Bool
-
+    func acceptMember(token: String)  -> Bool
+    
     /**
      * Close the pairing window without admitting any device.
      */
-    func cancelPairing()
-
+    func cancelPairing() 
+    
     /**
      * Destroy the group: push Revoke to all members, wipe local state, fire on_group_destroyed.
      * Session becomes terminal — all subsequent `send()` calls return `GroupDestroyed`.
      */
-    func destroyGroup()
-
+    func destroyGroup() 
+    
     /**
      * Join a group as the responding device by decoding the initiator's `token`
      * and sending a `Pair` message with this device's public keys.
      * Returns `SessionError::InvalidToken` if the token is malformed.
      */
-    func joinGroup(token: String) throws
-
+    func joinGroup(token: String) throws 
+    
     /**
      * List remote group members (excludes the local device).
      *
      * Returns an empty `Vec` when no manifest is set.
      * Each `Member` has a stable `id` and an auto-generated `name`.
      */
-    func members() -> [Member]
-
+    func members()  -> [Member]
+    
     /**
      * Opens a 60-second pairing window and returns an opaque base64url token.
      * The token encodes `noise_pub || signing_pub || device_name` — pass it to
      * the peer's `join_group(token)` call.  Single-use; expires with the window.
      */
-    func pairingToken() -> String
-
+    func pairingToken()  -> String
+    
     /**
      * Remove a group member by their opaque `member_id` from `members()`.
      *
@@ -550,36 +555,37 @@ public protocol HushFfiSessionProtocol: AnyObject {
      * Returns `SessionError::NotInGroup` if no manifest is set.
      * Returns `SessionError::MemberNotFound` if no member with that id exists.
      */
-    func removeMember(memberId: String) throws
-
+    func removeMember(memberId: String) throws 
+    
     /**
      * Encrypt `blob` and fan out to all current group members.
      * Returns `SessionError::NotInGroup` if the session has no manifest yet.
      */
-    func send(blob: Data) throws
-
+    func send(blob: Data) throws 
+    
     /**
      * Register the callback fired when a new member joins the group.
      *
      * Fires both on the admitting device (after `acceptMember`) and on all other
      * current members when they receive the updated manifest.
      */
-    func setOnMemberJoined(callback: MemberJoinedCallback)
-
+    func setOnMemberJoined(callback: MemberJoinedCallback) 
+    
     /**
      * Register the callback fired when a member is removed from the group (Soft Removal).
      *
      * Does NOT fire when the local device is removed — that fires `onRemovedFromGroup`.
      */
-    func setOnMemberLeft(callback: MemberLeftCallback)
-
+    func setOnMemberLeft(callback: MemberLeftCallback) 
+    
     /**
      * Register the callback fired when a `Pair` message arrives within an open pairing window.
      *
      * `callback.on_member_request(token, name)` fires with the opaque request token
      * and the auto-generated member name. Pass `token` to `accept_member(token)` to admit.
      */
-    func setOnMemberRequest(callback: MemberRequestCallback)
+    func setOnMemberRequest(callback: MemberRequestCallback) 
+    
 }
 
 /**
@@ -588,14 +594,13 @@ public protocol HushFfiSessionProtocol: AnyObject {
  * Create via `HushFfiSession.create(...)`.  All key arguments are raw bytes.
  */
 open class HushFfiSession:
-    HushFfiSessionProtocol
-{
+    HushFfiSessionProtocol {
     fileprivate let pointer: UnsafeMutableRawPointer!
 
-    // Used to instantiate a [FFIObject] without an actual pointer, for fakes in tests, mostly.
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+    /// Used to instantiate a [FFIObject] without an actual pointer, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public struct NoPointer {
         public init() {}
     }
@@ -603,7 +608,7 @@ open class HushFfiSession:
     // TODO: We'd like this to be `private` but for Swifty reasons,
     // we can't implement `FfiConverter` without making this `required` and we can't
     // make it `required` without making it `public`.
-    public required init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
         self.pointer = pointer
     }
 
@@ -612,20 +617,19 @@ open class HushFfiSession:
     //
     // - Warning:
     //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing [Pointer] the FFI lower functions will crash.
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
-    public init(noPointer _: NoPointer) {
-        pointer = nil
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noPointer: NoPointer) {
+        self.pointer = nil
     }
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public func uniffiClonePointer() -> UnsafeMutableRawPointer {
         return try! rustCall { uniffi_hush_sync_fn_clone_hushffisession(self.pointer, $0) }
     }
-
     // No primary constructor declared for this class.
 
     deinit {
@@ -636,12 +640,13 @@ open class HushFfiSession:
         try! rustCall { uniffi_hush_sync_fn_free_hushffisession(pointer, $0) }
     }
 
+    
     /**
      * Create a session. Always succeeds — the relay connects in the background.
      *
      * - `base_dir`: directory where the SQLite database is stored
      * - `namespace`: scopes the database file; one session per namespace
-     * - `relay_host`: hostname or IP of the relay, e.g. `"relay.example.com"` (no port — ports are managed internally)
+     * - `relay_host`: relay hostname or IP, e.g. `"relay.example.com"` (no port — ports are managed internally)
      * - `relay_pub`: 32-byte X25519 relay public key (wrong length → `InvalidRelayPublicKey`)
      * - `on_message`: called for every inbound `Sync` message
      *
@@ -649,87 +654,92 @@ open class HushFfiSession:
      * Automatically reconnects on relay disconnects using an exponential backoff
      * capped at 30 seconds.
      */
-    public static func create(baseDir: String, namespace: String, relayHost: String, relayPub: Data, onMessage: MessageCallback, onRemovedFromGroup: RemovedFromGroupCallback, onGroupDestroyed: GroupDestroyedCallback, onConnectionChanged: ConnectionChangedCallback?) throws -> HushFfiSession {
-        return try FfiConverterTypeHushFfiSession.lift(rustCallWithError(FfiConverterTypeSessionError.lift) {
-            uniffi_hush_sync_fn_constructor_hushffisession_create(
-                FfiConverterString.lower(baseDir),
-                FfiConverterString.lower(namespace),
-                FfiConverterString.lower(relayHost),
-                FfiConverterData.lower(relayPub),
-                FfiConverterCallbackInterfaceMessageCallback.lower(onMessage),
-                FfiConverterCallbackInterfaceRemovedFromGroupCallback.lower(onRemovedFromGroup),
-                FfiConverterCallbackInterfaceGroupDestroyedCallback.lower(onGroupDestroyed),
-                FfiConverterOptionCallbackInterfaceConnectionChangedCallback.lower(onConnectionChanged), $0
-            )
-        })
-    }
+public static func create(baseDir: String, namespace: String, relayHost: String, relayPub: Data, onMessage: MessageCallback, onRemovedFromGroup: RemovedFromGroupCallback, onGroupDestroyed: GroupDestroyedCallback, onConnectionChanged: ConnectionChangedCallback?)throws  -> HushFfiSession {
+    return try  FfiConverterTypeHushFfiSession.lift(try rustCallWithError(FfiConverterTypeSessionError.lift) {
+    uniffi_hush_sync_fn_constructor_hushffisession_create(
+        FfiConverterString.lower(baseDir),
+        FfiConverterString.lower(namespace),
+        FfiConverterString.lower(relayHost),
+        FfiConverterData.lower(relayPub),
+        FfiConverterCallbackInterfaceMessageCallback.lower(onMessage),
+        FfiConverterCallbackInterfaceRemovedFromGroupCallback.lower(onRemovedFromGroup),
+        FfiConverterCallbackInterfaceGroupDestroyedCallback.lower(onGroupDestroyed),
+        FfiConverterOptionCallbackInterfaceConnectionChangedCallback.lower(onConnectionChanged),$0
+    )
+})
+}
+    
 
+    
     /**
      * Admit a pending member identified by their opaque `token` from `onMemberRequest`.
      *
      * Returns `true` if admitted, `false` if the token is unknown or the pairing window closed.
      */
-    open func acceptMember(token: String) -> Bool {
-        return try! FfiConverterBool.lift(try! rustCall {
-            uniffi_hush_sync_fn_method_hushffisession_accept_member(self.uniffiClonePointer(),
-                                                                    FfiConverterString.lower(token), $0)
-        })
-    }
-
+open func acceptMember(token: String) -> Bool {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_hush_sync_fn_method_hushffisession_accept_member(self.uniffiClonePointer(),
+        FfiConverterString.lower(token),$0
+    )
+})
+}
+    
     /**
      * Close the pairing window without admitting any device.
      */
-    open func cancelPairing() {
-        try! rustCall {
-            uniffi_hush_sync_fn_method_hushffisession_cancel_pairing(self.uniffiClonePointer(), $0)
-        }
-    }
-
+open func cancelPairing() {try! rustCall() {
+    uniffi_hush_sync_fn_method_hushffisession_cancel_pairing(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
     /**
      * Destroy the group: push Revoke to all members, wipe local state, fire on_group_destroyed.
      * Session becomes terminal — all subsequent `send()` calls return `GroupDestroyed`.
      */
-    open func destroyGroup() {
-        try! rustCall {
-            uniffi_hush_sync_fn_method_hushffisession_destroy_group(self.uniffiClonePointer(), $0)
-        }
-    }
-
+open func destroyGroup() {try! rustCall() {
+    uniffi_hush_sync_fn_method_hushffisession_destroy_group(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
     /**
      * Join a group as the responding device by decoding the initiator's `token`
      * and sending a `Pair` message with this device's public keys.
      * Returns `SessionError::InvalidToken` if the token is malformed.
      */
-    open func joinGroup(token: String) throws {
-        try rustCallWithError(FfiConverterTypeSessionError.lift) {
-            uniffi_hush_sync_fn_method_hushffisession_join_group(self.uniffiClonePointer(),
-                                                                 FfiConverterString.lower(token), $0)
-        }
-    }
-
+open func joinGroup(token: String)throws  {try rustCallWithError(FfiConverterTypeSessionError.lift) {
+    uniffi_hush_sync_fn_method_hushffisession_join_group(self.uniffiClonePointer(),
+        FfiConverterString.lower(token),$0
+    )
+}
+}
+    
     /**
      * List remote group members (excludes the local device).
      *
      * Returns an empty `Vec` when no manifest is set.
      * Each `Member` has a stable `id` and an auto-generated `name`.
      */
-    open func members() -> [Member] {
-        return try! FfiConverterSequenceTypeMember.lift(try! rustCall {
-            uniffi_hush_sync_fn_method_hushffisession_members(self.uniffiClonePointer(), $0)
-        })
-    }
-
+open func members() -> [Member] {
+    return try!  FfiConverterSequenceTypeMember.lift(try! rustCall() {
+    uniffi_hush_sync_fn_method_hushffisession_members(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
     /**
      * Opens a 60-second pairing window and returns an opaque base64url token.
      * The token encodes `noise_pub || signing_pub || device_name` — pass it to
      * the peer's `join_group(token)` call.  Single-use; expires with the window.
      */
-    open func pairingToken() -> String {
-        return try! FfiConverterString.lift(try! rustCall {
-            uniffi_hush_sync_fn_method_hushffisession_pairing_token(self.uniffiClonePointer(), $0)
-        })
-    }
-
+open func pairingToken() -> String {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_hush_sync_fn_method_hushffisession_pairing_token(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
     /**
      * Remove a group member by their opaque `member_id` from `members()`.
      *
@@ -740,67 +750,70 @@ open class HushFfiSession:
      * Returns `SessionError::NotInGroup` if no manifest is set.
      * Returns `SessionError::MemberNotFound` if no member with that id exists.
      */
-    open func removeMember(memberId: String) throws {
-        try rustCallWithError(FfiConverterTypeSessionError.lift) {
-            uniffi_hush_sync_fn_method_hushffisession_remove_member(self.uniffiClonePointer(),
-                                                                    FfiConverterString.lower(memberId), $0)
-        }
-    }
-
+open func removeMember(memberId: String)throws  {try rustCallWithError(FfiConverterTypeSessionError.lift) {
+    uniffi_hush_sync_fn_method_hushffisession_remove_member(self.uniffiClonePointer(),
+        FfiConverterString.lower(memberId),$0
+    )
+}
+}
+    
     /**
      * Encrypt `blob` and fan out to all current group members.
      * Returns `SessionError::NotInGroup` if the session has no manifest yet.
      */
-    open func send(blob: Data) throws {
-        try rustCallWithError(FfiConverterTypeSessionError.lift) {
-            uniffi_hush_sync_fn_method_hushffisession_send(self.uniffiClonePointer(),
-                                                           FfiConverterData.lower(blob), $0)
-        }
-    }
-
+open func send(blob: Data)throws  {try rustCallWithError(FfiConverterTypeSessionError.lift) {
+    uniffi_hush_sync_fn_method_hushffisession_send(self.uniffiClonePointer(),
+        FfiConverterData.lower(blob),$0
+    )
+}
+}
+    
     /**
      * Register the callback fired when a new member joins the group.
      *
      * Fires both on the admitting device (after `acceptMember`) and on all other
      * current members when they receive the updated manifest.
      */
-    open func setOnMemberJoined(callback: MemberJoinedCallback) {
-        try! rustCall {
-            uniffi_hush_sync_fn_method_hushffisession_set_on_member_joined(self.uniffiClonePointer(),
-                                                                           FfiConverterCallbackInterfaceMemberJoinedCallback.lower(callback), $0)
-        }
-    }
-
+open func setOnMemberJoined(callback: MemberJoinedCallback) {try! rustCall() {
+    uniffi_hush_sync_fn_method_hushffisession_set_on_member_joined(self.uniffiClonePointer(),
+        FfiConverterCallbackInterfaceMemberJoinedCallback.lower(callback),$0
+    )
+}
+}
+    
     /**
      * Register the callback fired when a member is removed from the group (Soft Removal).
      *
      * Does NOT fire when the local device is removed — that fires `onRemovedFromGroup`.
      */
-    open func setOnMemberLeft(callback: MemberLeftCallback) {
-        try! rustCall {
-            uniffi_hush_sync_fn_method_hushffisession_set_on_member_left(self.uniffiClonePointer(),
-                                                                         FfiConverterCallbackInterfaceMemberLeftCallback.lower(callback), $0)
-        }
-    }
-
+open func setOnMemberLeft(callback: MemberLeftCallback) {try! rustCall() {
+    uniffi_hush_sync_fn_method_hushffisession_set_on_member_left(self.uniffiClonePointer(),
+        FfiConverterCallbackInterfaceMemberLeftCallback.lower(callback),$0
+    )
+}
+}
+    
     /**
      * Register the callback fired when a `Pair` message arrives within an open pairing window.
      *
      * `callback.on_member_request(token, name)` fires with the opaque request token
      * and the auto-generated member name. Pass `token` to `accept_member(token)` to admit.
      */
-    open func setOnMemberRequest(callback: MemberRequestCallback) {
-        try! rustCall {
-            uniffi_hush_sync_fn_method_hushffisession_set_on_member_request(self.uniffiClonePointer(),
-                                                                            FfiConverterCallbackInterfaceMemberRequestCallback.lower(callback), $0)
-        }
-    }
+open func setOnMemberRequest(callback: MemberRequestCallback) {try! rustCall() {
+    uniffi_hush_sync_fn_method_hushffisession_set_on_member_request(self.uniffiClonePointer(),
+        FfiConverterCallbackInterfaceMemberRequestCallback.lower(callback),$0
+    )
+}
+}
+    
+
 }
 
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
 public struct FfiConverterTypeHushFfiSession: FfiConverter {
+
     typealias FfiType = UnsafeMutableRawPointer
     typealias SwiftType = HushFfiSession
 
@@ -817,7 +830,7 @@ public struct FfiConverterTypeHushFfiSession: FfiConverter {
         // The Rust code won't compile if a pointer won't fit in a UInt64.
         // We have to go via `UInt` because that's the thing that's the size of a pointer.
         let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
-        if ptr == nil {
+        if (ptr == nil) {
             throw UniffiInternalError.unexpectedNullPointer
         }
         return try lift(ptr!)
@@ -830,19 +843,23 @@ public struct FfiConverterTypeHushFfiSession: FfiConverter {
     }
 }
 
+
+
+
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
 public func FfiConverterTypeHushFfiSession_lift(_ pointer: UnsafeMutableRawPointer) throws -> HushFfiSession {
     return try FfiConverterTypeHushFfiSession.lift(pointer)
 }
 
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
 public func FfiConverterTypeHushFfiSession_lower(_ value: HushFfiSession) -> UnsafeMutableRawPointer {
     return FfiConverterTypeHushFfiSession.lower(value)
 }
+
 
 /**
  * A remote group member as seen through the FFI surface.
@@ -857,23 +874,24 @@ public struct Member {
      */
     public var name: String
 
-    /// Default memberwise initializers are never public by default, so we
-    /// declare one manually.
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
     public init(
-        /* 
+        /**
          * Stable opaque identifier, e.g. `"YWJjZGVmZ2"`.
-         */ id: String,
-        /* 
-            * Auto-generated human-readable name, e.g. `"AmberFalcon"`.
-            */ name: String
-    ) {
+         */id: String, 
+        /**
+         * Auto-generated human-readable name, e.g. `"AmberFalcon"`.
+         */name: String) {
         self.id = id
         self.name = name
     }
 }
 
+
+
 extension Member: Equatable, Hashable {
-    public static func == (lhs: Member, rhs: Member) -> Bool {
+    public static func ==(lhs: Member, rhs: Member) -> Bool {
         if lhs.id != rhs.id {
             return false
         }
@@ -889,16 +907,17 @@ extension Member: Equatable, Hashable {
     }
 }
 
+
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
 public struct FfiConverterTypeMember: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Member {
         return
             try Member(
-                id: FfiConverterString.read(from: &buf),
+                id: FfiConverterString.read(from: &buf), 
                 name: FfiConverterString.read(from: &buf)
-            )
+        )
     }
 
     public static func write(_ value: Member, into buf: inout [UInt8]) {
@@ -907,33 +926,42 @@ public struct FfiConverterTypeMember: FfiConverterRustBuffer {
     }
 }
 
+
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
 public func FfiConverterTypeMember_lift(_ buf: RustBuffer) throws -> Member {
     return try FfiConverterTypeMember.lift(buf)
 }
 
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
 public func FfiConverterTypeMember_lower(_ value: Member) -> RustBuffer {
     return FfiConverterTypeMember.lower(value)
 }
 
+
 public enum SessionError {
-    case InvalidKeyLength(expected: UInt32, got: UInt32)
+
+    
+    
+    case InvalidKeyLength(expected: UInt32, got: UInt32
+    )
     case InvalidRelayPublicKey
-    case InvalidNamespace(msg: String)
-    case PushFailed(msg: String)
+    case InvalidNamespace(msg: String
+    )
+    case PushFailed(msg: String
+    )
     case InvalidToken
     case NotInGroup
     case MemberNotFound
     case GroupDestroyed
 }
 
+
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
 public struct FfiConverterTypeSessionError: FfiConverterRustBuffer {
     typealias SwiftType = SessionError
@@ -941,57 +969,76 @@ public struct FfiConverterTypeSessionError: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SessionError {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-        case 1: return try .InvalidKeyLength(
-                expected: FfiConverterUInt32.read(from: &buf),
-                got: FfiConverterUInt32.read(from: &buf)
+
+        
+
+        
+        case 1: return .InvalidKeyLength(
+            expected: try FfiConverterUInt32.read(from: &buf), 
+            got: try FfiConverterUInt32.read(from: &buf)
             )
         case 2: return .InvalidRelayPublicKey
-        case 3: return try .InvalidNamespace(
-                msg: FfiConverterString.read(from: &buf)
+        case 3: return .InvalidNamespace(
+            msg: try FfiConverterString.read(from: &buf)
             )
-        case 4: return try .PushFailed(
-                msg: FfiConverterString.read(from: &buf)
+        case 4: return .PushFailed(
+            msg: try FfiConverterString.read(from: &buf)
             )
         case 5: return .InvalidToken
         case 6: return .NotInGroup
         case 7: return .MemberNotFound
         case 8: return .GroupDestroyed
-        default: throw UniffiInternalError.unexpectedEnumCase
+
+         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: SessionError, into buf: inout [UInt8]) {
         switch value {
-        case let .InvalidKeyLength(expected, got):
+
+        
+
+        
+        
+        case let .InvalidKeyLength(expected,got):
             writeInt(&buf, Int32(1))
             FfiConverterUInt32.write(expected, into: &buf)
             FfiConverterUInt32.write(got, into: &buf)
-
+            
+        
         case .InvalidRelayPublicKey:
             writeInt(&buf, Int32(2))
-
+        
+        
         case let .InvalidNamespace(msg):
             writeInt(&buf, Int32(3))
             FfiConverterString.write(msg, into: &buf)
-
+            
+        
         case let .PushFailed(msg):
             writeInt(&buf, Int32(4))
             FfiConverterString.write(msg, into: &buf)
-
+            
+        
         case .InvalidToken:
             writeInt(&buf, Int32(5))
-
+        
+        
         case .NotInGroup:
             writeInt(&buf, Int32(6))
-
+        
+        
         case .MemberNotFound:
             writeInt(&buf, Int32(7))
-
+        
+        
         case .GroupDestroyed:
             writeInt(&buf, Int32(8))
+        
         }
     }
 }
+
 
 extension SessionError: Equatable, Hashable {}
 
@@ -1001,45 +1048,52 @@ extension SessionError: Foundation.LocalizedError {
     }
 }
 
+
+
+
 /**
  * Fired when the relay connection state changes.
  * `connected = true` when the relay connects; `false` when it disconnects.
  * Informational only — the library queues outbox messages and reconnects automatically.
  * Does NOT fire at session construction time.
  */
-public protocol ConnectionChangedCallback: AnyObject {
-    func onConnectionChanged(connected: Bool)
+public protocol ConnectionChangedCallback : AnyObject {
+    
+    func onConnectionChanged(connected: Bool) 
+    
 }
 
-/// Magic number for the Rust proxy to call using the same mechanism as every other method,
-/// to free the callback once it's dropped by Rust.
+// Magic number for the Rust proxy to call using the same mechanism as every other method,
+// to free the callback once it's dropped by Rust.
 private let IDX_CALLBACK_FREE: Int32 = 0
 // Callback return codes
 private let UNIFFI_CALLBACK_SUCCESS: Int32 = 0
 private let UNIFFI_CALLBACK_ERROR: Int32 = 1
 private let UNIFFI_CALLBACK_UNEXPECTED_ERROR: Int32 = 2
 
-/// Put the implementation in a struct so we don't pollute the top-level namespace
-private enum UniffiCallbackInterfaceConnectionChangedCallback {
-    /// Create the VTable using a series of closures.
-    /// Swift automatically converts these into C callback functions.
-    static var vtable: UniffiVTableCallbackInterfaceConnectionChangedCallback = .init(
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceConnectionChangedCallback {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    static var vtable: UniffiVTableCallbackInterfaceConnectionChangedCallback = UniffiVTableCallbackInterfaceConnectionChangedCallback(
         onConnectionChanged: { (
             uniffiHandle: UInt64,
             connected: Int8,
-            _: UnsafeMutableRawPointer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
             uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
         ) in
             let makeCall = {
-                () throws in
+                () throws -> () in
                 guard let uniffiObj = try? FfiConverterCallbackInterfaceConnectionChangedCallback.handleMap.get(handle: uniffiHandle) else {
                     throw UniffiInternalError.unexpectedStaleHandle
                 }
-                return try uniffiObj.onConnectionChanged(
-                    connected: FfiConverterBool.lift(connected)
+                return uniffiObj.onConnectionChanged(
+                     connected: try FfiConverterBool.lift(connected)
                 )
             }
 
+            
             let writeReturn = { () }
             uniffiTraitInterfaceCall(
                 callStatus: uniffiCallStatus,
@@ -1047,7 +1101,7 @@ private enum UniffiCallbackInterfaceConnectionChangedCallback {
                 writeReturn: writeReturn
             )
         },
-        uniffiFree: { (uniffiHandle: UInt64) in
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
             let result = try? FfiConverterCallbackInterfaceConnectionChangedCallback.handleMap.remove(handle: uniffiHandle)
             if result == nil {
                 print("Uniffi callback interface ConnectionChangedCallback: handle missing in uniffiFree")
@@ -1062,69 +1116,77 @@ private func uniffiCallbackInitConnectionChangedCallback() {
 
 // FfiConverter protocol for callback interfaces
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
-private enum FfiConverterCallbackInterfaceConnectionChangedCallback {
+fileprivate struct FfiConverterCallbackInterfaceConnectionChangedCallback {
     fileprivate static var handleMap = UniffiHandleMap<ConnectionChangedCallback>()
 }
 
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
-extension FfiConverterCallbackInterfaceConnectionChangedCallback: FfiConverter {
+extension FfiConverterCallbackInterfaceConnectionChangedCallback : FfiConverter {
     typealias SwiftType = ConnectionChangedCallback
     typealias FfiType = UInt64
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func lift(_ handle: UInt64) throws -> SwiftType {
         try handleMap.get(handle: handle)
     }
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
         let handle: UInt64 = try readInt(&buf)
         return try lift(handle)
     }
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func lower(_ v: SwiftType) -> UInt64 {
         return handleMap.insert(obj: v)
     }
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func write(_ v: SwiftType, into buf: inout [UInt8]) {
         writeInt(&buf, lower(v))
     }
 }
 
+
+
+
 /**
  * After this fires the session is terminal; call `create()` on the same namespace
  * to start fresh with a new identity.
  */
-public protocol GroupDestroyedCallback: AnyObject {
-    func onGroupDestroyed()
+public protocol GroupDestroyedCallback : AnyObject {
+    
+    func onGroupDestroyed() 
+    
 }
 
-/// Put the implementation in a struct so we don't pollute the top-level namespace
-private enum UniffiCallbackInterfaceGroupDestroyedCallback {
-    /// Create the VTable using a series of closures.
-    /// Swift automatically converts these into C callback functions.
-    static var vtable: UniffiVTableCallbackInterfaceGroupDestroyedCallback = .init(
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceGroupDestroyedCallback {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    static var vtable: UniffiVTableCallbackInterfaceGroupDestroyedCallback = UniffiVTableCallbackInterfaceGroupDestroyedCallback(
         onGroupDestroyed: { (
             uniffiHandle: UInt64,
-            _: UnsafeMutableRawPointer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
             uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
         ) in
             let makeCall = {
-                () throws in
+                () throws -> () in
                 guard let uniffiObj = try? FfiConverterCallbackInterfaceGroupDestroyedCallback.handleMap.get(handle: uniffiHandle) else {
                     throw UniffiInternalError.unexpectedStaleHandle
                 }
@@ -1132,6 +1194,7 @@ private enum UniffiCallbackInterfaceGroupDestroyedCallback {
                 )
             }
 
+            
             let writeReturn = { () }
             uniffiTraitInterfaceCall(
                 callStatus: uniffiCallStatus,
@@ -1139,7 +1202,7 @@ private enum UniffiCallbackInterfaceGroupDestroyedCallback {
                 writeReturn: writeReturn
             )
         },
-        uniffiFree: { (uniffiHandle: UInt64) in
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
             let result = try? FfiConverterCallbackInterfaceGroupDestroyedCallback.handleMap.remove(handle: uniffiHandle)
             if result == nil {
                 print("Uniffi callback interface GroupDestroyedCallback: handle missing in uniffiFree")
@@ -1154,79 +1217,88 @@ private func uniffiCallbackInitGroupDestroyedCallback() {
 
 // FfiConverter protocol for callback interfaces
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
-private enum FfiConverterCallbackInterfaceGroupDestroyedCallback {
+fileprivate struct FfiConverterCallbackInterfaceGroupDestroyedCallback {
     fileprivate static var handleMap = UniffiHandleMap<GroupDestroyedCallback>()
 }
 
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
-extension FfiConverterCallbackInterfaceGroupDestroyedCallback: FfiConverter {
+extension FfiConverterCallbackInterfaceGroupDestroyedCallback : FfiConverter {
     typealias SwiftType = GroupDestroyedCallback
     typealias FfiType = UInt64
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func lift(_ handle: UInt64) throws -> SwiftType {
         try handleMap.get(handle: handle)
     }
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
         let handle: UInt64 = try readInt(&buf)
         return try lift(handle)
     }
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func lower(_ v: SwiftType) -> UInt64 {
         return handleMap.insert(obj: v)
     }
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func write(_ v: SwiftType, into buf: inout [UInt8]) {
         writeInt(&buf, lower(v))
     }
 }
 
+
+
+
 /**
  * Fired when a new member appears in an incoming manifest update or after `acceptMember` succeeds.
  */
-public protocol MemberJoinedCallback: AnyObject {
-    func onMemberJoined(memberId: String, memberName: String)
+public protocol MemberJoinedCallback : AnyObject {
+    
+    func onMemberJoined(memberId: String, memberName: String) 
+    
 }
 
-/// Put the implementation in a struct so we don't pollute the top-level namespace
-private enum UniffiCallbackInterfaceMemberJoinedCallback {
-    /// Create the VTable using a series of closures.
-    /// Swift automatically converts these into C callback functions.
-    static var vtable: UniffiVTableCallbackInterfaceMemberJoinedCallback = .init(
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceMemberJoinedCallback {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    static var vtable: UniffiVTableCallbackInterfaceMemberJoinedCallback = UniffiVTableCallbackInterfaceMemberJoinedCallback(
         onMemberJoined: { (
             uniffiHandle: UInt64,
             memberId: RustBuffer,
             memberName: RustBuffer,
-            _: UnsafeMutableRawPointer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
             uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
         ) in
             let makeCall = {
-                () throws in
+                () throws -> () in
                 guard let uniffiObj = try? FfiConverterCallbackInterfaceMemberJoinedCallback.handleMap.get(handle: uniffiHandle) else {
                     throw UniffiInternalError.unexpectedStaleHandle
                 }
-                return try uniffiObj.onMemberJoined(
-                    memberId: FfiConverterString.lift(memberId),
-                    memberName: FfiConverterString.lift(memberName)
+                return uniffiObj.onMemberJoined(
+                     memberId: try FfiConverterString.lift(memberId),
+                     memberName: try FfiConverterString.lift(memberName)
                 )
             }
 
+            
             let writeReturn = { () }
             uniffiTraitInterfaceCall(
                 callStatus: uniffiCallStatus,
@@ -1234,7 +1306,7 @@ private enum UniffiCallbackInterfaceMemberJoinedCallback {
                 writeReturn: writeReturn
             )
         },
-        uniffiFree: { (uniffiHandle: UInt64) in
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
             let result = try? FfiConverterCallbackInterfaceMemberJoinedCallback.handleMap.remove(handle: uniffiHandle)
             if result == nil {
                 print("Uniffi callback interface MemberJoinedCallback: handle missing in uniffiFree")
@@ -1249,80 +1321,89 @@ private func uniffiCallbackInitMemberJoinedCallback() {
 
 // FfiConverter protocol for callback interfaces
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
-private enum FfiConverterCallbackInterfaceMemberJoinedCallback {
+fileprivate struct FfiConverterCallbackInterfaceMemberJoinedCallback {
     fileprivate static var handleMap = UniffiHandleMap<MemberJoinedCallback>()
 }
 
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
-extension FfiConverterCallbackInterfaceMemberJoinedCallback: FfiConverter {
+extension FfiConverterCallbackInterfaceMemberJoinedCallback : FfiConverter {
     typealias SwiftType = MemberJoinedCallback
     typealias FfiType = UInt64
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func lift(_ handle: UInt64) throws -> SwiftType {
         try handleMap.get(handle: handle)
     }
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
         let handle: UInt64 = try readInt(&buf)
         return try lift(handle)
     }
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func lower(_ v: SwiftType) -> UInt64 {
         return handleMap.insert(obj: v)
     }
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func write(_ v: SwiftType, into buf: inout [UInt8]) {
         writeInt(&buf, lower(v))
     }
 }
 
+
+
+
 /**
  * Fired when a member disappears from an incoming manifest update (Soft Removal).
  * Does NOT fire when the local device is the removed one — that fires `onRemovedFromGroup`.
  */
-public protocol MemberLeftCallback: AnyObject {
-    func onMemberLeft(memberId: String, memberName: String)
+public protocol MemberLeftCallback : AnyObject {
+    
+    func onMemberLeft(memberId: String, memberName: String) 
+    
 }
 
-/// Put the implementation in a struct so we don't pollute the top-level namespace
-private enum UniffiCallbackInterfaceMemberLeftCallback {
-    /// Create the VTable using a series of closures.
-    /// Swift automatically converts these into C callback functions.
-    static var vtable: UniffiVTableCallbackInterfaceMemberLeftCallback = .init(
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceMemberLeftCallback {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    static var vtable: UniffiVTableCallbackInterfaceMemberLeftCallback = UniffiVTableCallbackInterfaceMemberLeftCallback(
         onMemberLeft: { (
             uniffiHandle: UInt64,
             memberId: RustBuffer,
             memberName: RustBuffer,
-            _: UnsafeMutableRawPointer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
             uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
         ) in
             let makeCall = {
-                () throws in
+                () throws -> () in
                 guard let uniffiObj = try? FfiConverterCallbackInterfaceMemberLeftCallback.handleMap.get(handle: uniffiHandle) else {
                     throw UniffiInternalError.unexpectedStaleHandle
                 }
-                return try uniffiObj.onMemberLeft(
-                    memberId: FfiConverterString.lift(memberId),
-                    memberName: FfiConverterString.lift(memberName)
+                return uniffiObj.onMemberLeft(
+                     memberId: try FfiConverterString.lift(memberId),
+                     memberName: try FfiConverterString.lift(memberName)
                 )
             }
 
+            
             let writeReturn = { () }
             uniffiTraitInterfaceCall(
                 callStatus: uniffiCallStatus,
@@ -1330,7 +1411,7 @@ private enum UniffiCallbackInterfaceMemberLeftCallback {
                 writeReturn: writeReturn
             )
         },
-        uniffiFree: { (uniffiHandle: UInt64) in
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
             let result = try? FfiConverterCallbackInterfaceMemberLeftCallback.handleMap.remove(handle: uniffiHandle)
             if result == nil {
                 print("Uniffi callback interface MemberLeftCallback: handle missing in uniffiFree")
@@ -1345,81 +1426,90 @@ private func uniffiCallbackInitMemberLeftCallback() {
 
 // FfiConverter protocol for callback interfaces
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
-private enum FfiConverterCallbackInterfaceMemberLeftCallback {
+fileprivate struct FfiConverterCallbackInterfaceMemberLeftCallback {
     fileprivate static var handleMap = UniffiHandleMap<MemberLeftCallback>()
 }
 
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
-extension FfiConverterCallbackInterfaceMemberLeftCallback: FfiConverter {
+extension FfiConverterCallbackInterfaceMemberLeftCallback : FfiConverter {
     typealias SwiftType = MemberLeftCallback
     typealias FfiType = UInt64
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func lift(_ handle: UInt64) throws -> SwiftType {
         try handleMap.get(handle: handle)
     }
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
         let handle: UInt64 = try readInt(&buf)
         return try lift(handle)
     }
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func lower(_ v: SwiftType) -> UInt64 {
         return handleMap.insert(obj: v)
     }
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func write(_ v: SwiftType, into buf: inout [UInt8]) {
         writeInt(&buf, lower(v))
     }
 }
+
+
+
 
 /**
  * Fired when a `Pair` message arrives within an open pairing window.
  * The caller shows UI ("Name wants to join — Accept?"), then calls
  * `accept_member(token)` or ignores the request.
  */
-public protocol MemberRequestCallback: AnyObject {
-    func onMemberRequest(token: String, name: String)
+public protocol MemberRequestCallback : AnyObject {
+    
+    func onMemberRequest(token: String, name: String) 
+    
 }
 
-/// Put the implementation in a struct so we don't pollute the top-level namespace
-private enum UniffiCallbackInterfaceMemberRequestCallback {
-    /// Create the VTable using a series of closures.
-    /// Swift automatically converts these into C callback functions.
-    static var vtable: UniffiVTableCallbackInterfaceMemberRequestCallback = .init(
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceMemberRequestCallback {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    static var vtable: UniffiVTableCallbackInterfaceMemberRequestCallback = UniffiVTableCallbackInterfaceMemberRequestCallback(
         onMemberRequest: { (
             uniffiHandle: UInt64,
             token: RustBuffer,
             name: RustBuffer,
-            _: UnsafeMutableRawPointer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
             uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
         ) in
             let makeCall = {
-                () throws in
+                () throws -> () in
                 guard let uniffiObj = try? FfiConverterCallbackInterfaceMemberRequestCallback.handleMap.get(handle: uniffiHandle) else {
                     throw UniffiInternalError.unexpectedStaleHandle
                 }
-                return try uniffiObj.onMemberRequest(
-                    token: FfiConverterString.lift(token),
-                    name: FfiConverterString.lift(name)
+                return uniffiObj.onMemberRequest(
+                     token: try FfiConverterString.lift(token),
+                     name: try FfiConverterString.lift(name)
                 )
             }
 
+            
             let writeReturn = { () }
             uniffiTraitInterfaceCall(
                 callStatus: uniffiCallStatus,
@@ -1427,7 +1517,7 @@ private enum UniffiCallbackInterfaceMemberRequestCallback {
                 writeReturn: writeReturn
             )
         },
-        uniffiFree: { (uniffiHandle: UInt64) in
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
             let result = try? FfiConverterCallbackInterfaceMemberRequestCallback.handleMap.remove(handle: uniffiHandle)
             if result == nil {
                 print("Uniffi callback interface MemberRequestCallback: handle missing in uniffiFree")
@@ -1442,80 +1532,89 @@ private func uniffiCallbackInitMemberRequestCallback() {
 
 // FfiConverter protocol for callback interfaces
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
-private enum FfiConverterCallbackInterfaceMemberRequestCallback {
+fileprivate struct FfiConverterCallbackInterfaceMemberRequestCallback {
     fileprivate static var handleMap = UniffiHandleMap<MemberRequestCallback>()
 }
 
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
-extension FfiConverterCallbackInterfaceMemberRequestCallback: FfiConverter {
+extension FfiConverterCallbackInterfaceMemberRequestCallback : FfiConverter {
     typealias SwiftType = MemberRequestCallback
     typealias FfiType = UInt64
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func lift(_ handle: UInt64) throws -> SwiftType {
         try handleMap.get(handle: handle)
     }
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
         let handle: UInt64 = try readInt(&buf)
         return try lift(handle)
     }
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func lower(_ v: SwiftType) -> UInt64 {
         return handleMap.insert(obj: v)
     }
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func write(_ v: SwiftType, into buf: inout [UInt8]) {
         writeInt(&buf, lower(v))
     }
 }
 
+
+
+
 /**
  * Fired when a `Sync` message is delivered to this device.
  * `blob` is the raw application payload; `sender_noise_pub` is the sender's 32-byte X25519 key.
  */
-public protocol MessageCallback: AnyObject {
-    func onMessage(blob: Data, senderNoisePub: Data)
+public protocol MessageCallback : AnyObject {
+    
+    func onMessage(blob: Data, senderNoisePub: Data) 
+    
 }
 
-/// Put the implementation in a struct so we don't pollute the top-level namespace
-private enum UniffiCallbackInterfaceMessageCallback {
-    /// Create the VTable using a series of closures.
-    /// Swift automatically converts these into C callback functions.
-    static var vtable: UniffiVTableCallbackInterfaceMessageCallback = .init(
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceMessageCallback {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    static var vtable: UniffiVTableCallbackInterfaceMessageCallback = UniffiVTableCallbackInterfaceMessageCallback(
         onMessage: { (
             uniffiHandle: UInt64,
             blob: RustBuffer,
             senderNoisePub: RustBuffer,
-            _: UnsafeMutableRawPointer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
             uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
         ) in
             let makeCall = {
-                () throws in
+                () throws -> () in
                 guard let uniffiObj = try? FfiConverterCallbackInterfaceMessageCallback.handleMap.get(handle: uniffiHandle) else {
                     throw UniffiInternalError.unexpectedStaleHandle
                 }
-                return try uniffiObj.onMessage(
-                    blob: FfiConverterData.lift(blob),
-                    senderNoisePub: FfiConverterData.lift(senderNoisePub)
+                return uniffiObj.onMessage(
+                     blob: try FfiConverterData.lift(blob),
+                     senderNoisePub: try FfiConverterData.lift(senderNoisePub)
                 )
             }
 
+            
             let writeReturn = { () }
             uniffiTraitInterfaceCall(
                 callStatus: uniffiCallStatus,
@@ -1523,7 +1622,7 @@ private enum UniffiCallbackInterfaceMessageCallback {
                 writeReturn: writeReturn
             )
         },
-        uniffiFree: { (uniffiHandle: UInt64) in
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
             let result = try? FfiConverterCallbackInterfaceMessageCallback.handleMap.remove(handle: uniffiHandle)
             if result == nil {
                 print("Uniffi callback interface MessageCallback: handle missing in uniffiFree")
@@ -1538,70 +1637,78 @@ private func uniffiCallbackInitMessageCallback() {
 
 // FfiConverter protocol for callback interfaces
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
-private enum FfiConverterCallbackInterfaceMessageCallback {
+fileprivate struct FfiConverterCallbackInterfaceMessageCallback {
     fileprivate static var handleMap = UniffiHandleMap<MessageCallback>()
 }
 
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
-extension FfiConverterCallbackInterfaceMessageCallback: FfiConverter {
+extension FfiConverterCallbackInterfaceMessageCallback : FfiConverter {
     typealias SwiftType = MessageCallback
     typealias FfiType = UInt64
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func lift(_ handle: UInt64) throws -> SwiftType {
         try handleMap.get(handle: handle)
     }
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
         let handle: UInt64 = try readInt(&buf)
         return try lift(handle)
     }
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func lower(_ v: SwiftType) -> UInt64 {
         return handleMap.insert(obj: v)
     }
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func write(_ v: SwiftType, into buf: inout [UInt8]) {
         writeInt(&buf, lower(v))
     }
 }
+
+
+
 
 /**
  * Fired when this device is excluded from an incoming `GroupManifest` update.
  * Another group member has issued a Soft Removal of this device (ADR-0015).
  * The session remains connected; the caller decides whether to wipe and re-pair.
  */
-public protocol RemovedFromGroupCallback: AnyObject {
-    func onRemovedFromGroup()
+public protocol RemovedFromGroupCallback : AnyObject {
+    
+    func onRemovedFromGroup() 
+    
 }
 
-/// Put the implementation in a struct so we don't pollute the top-level namespace
-private enum UniffiCallbackInterfaceRemovedFromGroupCallback {
-    /// Create the VTable using a series of closures.
-    /// Swift automatically converts these into C callback functions.
-    static var vtable: UniffiVTableCallbackInterfaceRemovedFromGroupCallback = .init(
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceRemovedFromGroupCallback {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    static var vtable: UniffiVTableCallbackInterfaceRemovedFromGroupCallback = UniffiVTableCallbackInterfaceRemovedFromGroupCallback(
         onRemovedFromGroup: { (
             uniffiHandle: UInt64,
-            _: UnsafeMutableRawPointer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
             uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
         ) in
             let makeCall = {
-                () throws in
+                () throws -> () in
                 guard let uniffiObj = try? FfiConverterCallbackInterfaceRemovedFromGroupCallback.handleMap.get(handle: uniffiHandle) else {
                     throw UniffiInternalError.unexpectedStaleHandle
                 }
@@ -1609,6 +1716,7 @@ private enum UniffiCallbackInterfaceRemovedFromGroupCallback {
                 )
             }
 
+            
             let writeReturn = { () }
             uniffiTraitInterfaceCall(
                 callStatus: uniffiCallStatus,
@@ -1616,7 +1724,7 @@ private enum UniffiCallbackInterfaceRemovedFromGroupCallback {
                 writeReturn: writeReturn
             )
         },
-        uniffiFree: { (uniffiHandle: UInt64) in
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
             let result = try? FfiConverterCallbackInterfaceRemovedFromGroupCallback.handleMap.remove(handle: uniffiHandle)
             if result == nil {
                 print("Uniffi callback interface RemovedFromGroupCallback: handle missing in uniffiFree")
@@ -1631,56 +1739,56 @@ private func uniffiCallbackInitRemovedFromGroupCallback() {
 
 // FfiConverter protocol for callback interfaces
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
-private enum FfiConverterCallbackInterfaceRemovedFromGroupCallback {
+fileprivate struct FfiConverterCallbackInterfaceRemovedFromGroupCallback {
     fileprivate static var handleMap = UniffiHandleMap<RemovedFromGroupCallback>()
 }
 
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
-extension FfiConverterCallbackInterfaceRemovedFromGroupCallback: FfiConverter {
+extension FfiConverterCallbackInterfaceRemovedFromGroupCallback : FfiConverter {
     typealias SwiftType = RemovedFromGroupCallback
     typealias FfiType = UInt64
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func lift(_ handle: UInt64) throws -> SwiftType {
         try handleMap.get(handle: handle)
     }
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
         let handle: UInt64 = try readInt(&buf)
         return try lift(handle)
     }
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func lower(_ v: SwiftType) -> UInt64 {
         return handleMap.insert(obj: v)
     }
 
-    #if swift(>=5.8)
-        @_documentation(visibility: private)
-    #endif
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
     public static func write(_ v: SwiftType, into buf: inout [UInt8]) {
         writeInt(&buf, lower(v))
     }
 }
 
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
-private struct FfiConverterOptionCallbackInterfaceConnectionChangedCallback: FfiConverterRustBuffer {
+fileprivate struct FfiConverterOptionCallbackInterfaceConnectionChangedCallback: FfiConverterRustBuffer {
     typealias SwiftType = ConnectionChangedCallback?
 
-    static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
         guard let value = value else {
             writeInt(&buf, Int8(0))
             return
@@ -1689,7 +1797,7 @@ private struct FfiConverterOptionCallbackInterfaceConnectionChangedCallback: Ffi
         FfiConverterCallbackInterfaceConnectionChangedCallback.write(value, into: &buf)
     }
 
-    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterCallbackInterfaceConnectionChangedCallback.read(from: &buf)
@@ -1699,12 +1807,12 @@ private struct FfiConverterOptionCallbackInterfaceConnectionChangedCallback: Ffi
 }
 
 #if swift(>=5.8)
-    @_documentation(visibility: private)
+@_documentation(visibility: private)
 #endif
-private struct FfiConverterSequenceTypeMember: FfiConverterRustBuffer {
+fileprivate struct FfiConverterSequenceTypeMember: FfiConverterRustBuffer {
     typealias SwiftType = [Member]
 
-    static func write(_ value: [Member], into buf: inout [UInt8]) {
+    public static func write(_ value: [Member], into buf: inout [UInt8]) {
         let len = Int32(value.count)
         writeInt(&buf, len)
         for item in value {
@@ -1712,12 +1820,12 @@ private struct FfiConverterSequenceTypeMember: FfiConverterRustBuffer {
         }
     }
 
-    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Member] {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Member] {
         let len: Int32 = try readInt(&buf)
         var seq = [Member]()
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
-            try seq.append(FfiConverterTypeMember.read(from: &buf))
+            seq.append(try FfiConverterTypeMember.read(from: &buf))
         }
         return seq
     }
@@ -1728,9 +1836,8 @@ private enum InitializationResult {
     case contractVersionMismatch
     case apiChecksumMismatch
 }
-
-/// Use a global variable to perform the versioning checks. Swift ensures that
-/// the code inside is only computed once.
+// Use a global variable to perform the versioning checks. Swift ensures that
+// the code inside is only computed once.
 private var initializationResult: InitializationResult = {
     // Get the bindings contract version from our ComponentInterface
     let bindings_contract_version = 26
@@ -1739,61 +1846,61 @@ private var initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if uniffi_hush_sync_checksum_method_hushffisession_accept_member() != 16777 {
+    if (uniffi_hush_sync_checksum_method_hushffisession_accept_member() != 16777) {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_hush_sync_checksum_method_hushffisession_cancel_pairing() != 53746 {
+    if (uniffi_hush_sync_checksum_method_hushffisession_cancel_pairing() != 53746) {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_hush_sync_checksum_method_hushffisession_destroy_group() != 1217 {
+    if (uniffi_hush_sync_checksum_method_hushffisession_destroy_group() != 1217) {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_hush_sync_checksum_method_hushffisession_join_group() != 37308 {
+    if (uniffi_hush_sync_checksum_method_hushffisession_join_group() != 37308) {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_hush_sync_checksum_method_hushffisession_members() != 20760 {
+    if (uniffi_hush_sync_checksum_method_hushffisession_members() != 20760) {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_hush_sync_checksum_method_hushffisession_pairing_token() != 14198 {
+    if (uniffi_hush_sync_checksum_method_hushffisession_pairing_token() != 14198) {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_hush_sync_checksum_method_hushffisession_remove_member() != 16018 {
+    if (uniffi_hush_sync_checksum_method_hushffisession_remove_member() != 16018) {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_hush_sync_checksum_method_hushffisession_send() != 20850 {
+    if (uniffi_hush_sync_checksum_method_hushffisession_send() != 20850) {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_hush_sync_checksum_method_hushffisession_set_on_member_joined() != 35932 {
+    if (uniffi_hush_sync_checksum_method_hushffisession_set_on_member_joined() != 35932) {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_hush_sync_checksum_method_hushffisession_set_on_member_left() != 50642 {
+    if (uniffi_hush_sync_checksum_method_hushffisession_set_on_member_left() != 50642) {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_hush_sync_checksum_method_hushffisession_set_on_member_request() != 52552 {
+    if (uniffi_hush_sync_checksum_method_hushffisession_set_on_member_request() != 52552) {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_hush_sync_checksum_constructor_hushffisession_create() != 45008 {
+    if (uniffi_hush_sync_checksum_constructor_hushffisession_create() != 32763) {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_hush_sync_checksum_method_connectionchangedcallback_on_connection_changed() != 31483 {
+    if (uniffi_hush_sync_checksum_method_connectionchangedcallback_on_connection_changed() != 31483) {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_hush_sync_checksum_method_groupdestroyedcallback_on_group_destroyed() != 37987 {
+    if (uniffi_hush_sync_checksum_method_groupdestroyedcallback_on_group_destroyed() != 37987) {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_hush_sync_checksum_method_memberjoinedcallback_on_member_joined() != 2593 {
+    if (uniffi_hush_sync_checksum_method_memberjoinedcallback_on_member_joined() != 2593) {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_hush_sync_checksum_method_memberleftcallback_on_member_left() != 26292 {
+    if (uniffi_hush_sync_checksum_method_memberleftcallback_on_member_left() != 26292) {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_hush_sync_checksum_method_memberrequestcallback_on_member_request() != 12851 {
+    if (uniffi_hush_sync_checksum_method_memberrequestcallback_on_member_request() != 12851) {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_hush_sync_checksum_method_messagecallback_on_message() != 64032 {
+    if (uniffi_hush_sync_checksum_method_messagecallback_on_message() != 64032) {
         return InitializationResult.apiChecksumMismatch
     }
-    if uniffi_hush_sync_checksum_method_removedfromgroupcallback_on_removed_from_group() != 29262 {
+    if (uniffi_hush_sync_checksum_method_removedfromgroupcallback_on_removed_from_group() != 29262) {
         return InitializationResult.apiChecksumMismatch
     }
 

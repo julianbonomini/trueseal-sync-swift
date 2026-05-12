@@ -29,7 +29,11 @@ CARGO_FLAGS=()
 CRATE_NAME="hush_sync"           # underscored crate name
 LIB_NAME="lib${CRATE_NAME}.a"
 
-BUILD_DIR="$RUST_DIR/target"
+# Use a writable target dir outside the Rust crate to avoid com.apple.provenance
+# lock files that macOS stamps on files inside the source tree.
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-/tmp/hush-sync-build}"
+
+BUILD_DIR="$CARGO_TARGET_DIR"
 OUT_DIR="$REPO_ROOT/build"
 XCFRAMEWORK_DIR="$REPO_ROOT/HushSyncFFI.xcframework"
 BINDINGS_DIR="$REPO_ROOT/Sources/HushSyncBindings"
@@ -46,9 +50,15 @@ require() {
 
 # ── Preflight ─────────────────────────────────────────────────────────────────
 
-require cargo
 require lipo
 require xcodebuild
+
+# Prefer the rustup-managed cargo over any Homebrew-installed one so that
+# cross-compilation targets installed via `rustup target add` are visible.
+if [[ -x "$HOME/.cargo/bin/cargo" ]]; then
+    export PATH="$HOME/.cargo/bin:$PATH"
+fi
+require cargo
 
 step "Building hush-sync for all targets (profile=$PROFILE)"
 
