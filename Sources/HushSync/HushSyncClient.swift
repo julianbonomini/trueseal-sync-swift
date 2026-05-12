@@ -91,10 +91,9 @@ public final class HushSyncClient: @unchecked Sendable {
         storageDirectory: URL = .defaultHushSyncStorage,
         namespace: String = "default"
     ) throws {
-        guard let host = relayURL.host, let port = relayURL.port else {
+        guard let host = relayURL.host else {
             throw HushSyncError.invalidRelayURL
         }
-        let relayAddr = "\(host):\(port)"
         let baseDir = storageDirectory.path
 
         // Create continuations before the session so callbacks can fire immediately.
@@ -112,7 +111,7 @@ public final class HushSyncClient: @unchecked Sendable {
             self.session = try HushFfiSession.create(
                 baseDir: baseDir,
                 namespace: namespace,
-                relayAddr: relayAddr,
+                relayHost: host,
                 relayPub: relayPublicKey,
                 onMessage:           BlobCallbackHandler(continuation: blobCont),
                 onRemovedFromGroup:  MemberRemovedCallbackHandler(continuation: memberCont),

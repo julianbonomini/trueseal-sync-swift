@@ -641,7 +641,7 @@ open class HushFfiSession:
      *
      * - `base_dir`: directory where the SQLite database is stored
      * - `namespace`: scopes the database file; one session per namespace
-     * - `relay_addr`: TCP address, e.g. `"relay.example.com:4433"`
+     * - `relay_host`: hostname or IP of the relay, e.g. `"relay.example.com"` (no port — ports are managed internally)
      * - `relay_pub`: 32-byte X25519 relay public key (wrong length → `InvalidRelayPublicKey`)
      * - `on_message`: called for every inbound `Sync` message
      *
@@ -649,12 +649,12 @@ open class HushFfiSession:
      * Automatically reconnects on relay disconnects using an exponential backoff
      * capped at 30 seconds.
      */
-    public static func create(baseDir: String, namespace: String, relayAddr: String, relayPub: Data, onMessage: MessageCallback, onRemovedFromGroup: RemovedFromGroupCallback, onGroupDestroyed: GroupDestroyedCallback, onConnectionChanged: ConnectionChangedCallback?) throws -> HushFfiSession {
+    public static func create(baseDir: String, namespace: String, relayHost: String, relayPub: Data, onMessage: MessageCallback, onRemovedFromGroup: RemovedFromGroupCallback, onGroupDestroyed: GroupDestroyedCallback, onConnectionChanged: ConnectionChangedCallback?) throws -> HushFfiSession {
         return try FfiConverterTypeHushFfiSession.lift(rustCallWithError(FfiConverterTypeSessionError.lift) {
             uniffi_hush_sync_fn_constructor_hushffisession_create(
                 FfiConverterString.lower(baseDir),
                 FfiConverterString.lower(namespace),
-                FfiConverterString.lower(relayAddr),
+                FfiConverterString.lower(relayHost),
                 FfiConverterData.lower(relayPub),
                 FfiConverterCallbackInterfaceMessageCallback.lower(onMessage),
                 FfiConverterCallbackInterfaceRemovedFromGroupCallback.lower(onRemovedFromGroup),
