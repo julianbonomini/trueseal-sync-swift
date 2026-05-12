@@ -1,0 +1,9 @@
+# Swift PM
+.build/
+
+# Build script intermediates
+build/
+
+# Generated XCFramework (produced by scripts/build-xcframework.sh;
+# distributed via GitHub releases, not versioned in the repo)
+HushSyncFFI.xcframework/
