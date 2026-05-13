@@ -205,6 +205,20 @@ public final class HushSyncClient: @unchecked Sendable {
 
     // MARK: - Members
 
+    /// Stable opaque identifier for the local device.
+    ///
+    /// Identical to the `id` this device has in a remote peer's ``members`` list.
+    public var localNodeId: String {
+        session.localNodeId()
+    }
+
+    /// Auto-generated display name for the local device.
+    ///
+    /// Identical to the `name` this device has in a remote peer's ``members`` list.
+    public var localDeviceName: String {
+        session.localDeviceName()
+    }
+
     /// Current remote Sync Group members (excludes the local device).
     ///
     /// Empty until the first pairing completes.

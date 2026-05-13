@@ -531,6 +531,20 @@ public protocol HushFfiSessionProtocol : AnyObject {
     func joinGroup(token: String) throws 
     
     /**
+     * Auto-generated display name for the local device.
+     * Derived from the local signing public key — identical to the `name`
+     * field this device would have in a remote device's `members()` list.
+     */
+    func localDeviceName()  -> String
+    
+    /**
+     * Stable opaque identifier for the local device.
+     * Derived from the local signing public key — identical to the `id`
+     * field this device would have in a remote device's `members()` list.
+     */
+    func localNodeId()  -> String
+    
+    /**
      * List remote group members (excludes the local device).
      *
      * Returns an empty `Vec` when no manifest is set.
@@ -539,9 +553,13 @@ public protocol HushFfiSessionProtocol : AnyObject {
     func members()  -> [Member]
     
     /**
-     * Opens a 60-second pairing window and returns an opaque base64url token.
+     * Opens a pairing window and returns an opaque base64url token.
+     * The window stays open until either `acceptMember()` is called (single-use:
+     * the window closes after the first accept) or the caller explicitly calls
+     * `cancelPairing()`. There is no auto-expiry — the caller controls lifetime
+     * by closing the pairing UI and calling `cancelPairing()` on dismiss (ADR-0021).
      * The token encodes `noise_pub || signing_pub || device_name` — pass it to
-     * the peer's `join_group(token)` call.  Single-use; expires with the window.
+     * the peer's `joinGroup(token)` call.
      */
     func pairingToken()  -> String
     
@@ -716,6 +734,30 @@ open func joinGroup(token: String)throws  {try rustCallWithError(FfiConverterTyp
 }
     
     /**
+     * Auto-generated display name for the local device.
+     * Derived from the local signing public key — identical to the `name`
+     * field this device would have in a remote device's `members()` list.
+     */
+open func localDeviceName() -> String {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_hush_sync_fn_method_hushffisession_local_device_name(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Stable opaque identifier for the local device.
+     * Derived from the local signing public key — identical to the `id`
+     * field this device would have in a remote device's `members()` list.
+     */
+open func localNodeId() -> String {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_hush_sync_fn_method_hushffisession_local_node_id(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
      * List remote group members (excludes the local device).
      *
      * Returns an empty `Vec` when no manifest is set.
@@ -729,9 +771,13 @@ open func members() -> [Member] {
 }
     
     /**
-     * Opens a 60-second pairing window and returns an opaque base64url token.
+     * Opens a pairing window and returns an opaque base64url token.
+     * The window stays open until either `acceptMember()` is called (single-use:
+     * the window closes after the first accept) or the caller explicitly calls
+     * `cancelPairing()`. There is no auto-expiry — the caller controls lifetime
+     * by closing the pairing UI and calling `cancelPairing()` on dismiss (ADR-0021).
      * The token encodes `noise_pub || signing_pub || device_name` — pass it to
-     * the peer's `join_group(token)` call.  Single-use; expires with the window.
+     * the peer's `joinGroup(token)` call.
      */
 open func pairingToken() -> String {
     return try!  FfiConverterString.lift(try! rustCall() {
@@ -1858,10 +1904,16 @@ private var initializationResult: InitializationResult = {
     if (uniffi_hush_sync_checksum_method_hushffisession_join_group() != 37308) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_hush_sync_checksum_method_hushffisession_local_device_name() != 59797) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_hush_sync_checksum_method_hushffisession_local_node_id() != 1866) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_hush_sync_checksum_method_hushffisession_members() != 20760) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hush_sync_checksum_method_hushffisession_pairing_token() != 14198) {
+    if (uniffi_hush_sync_checksum_method_hushffisession_pairing_token() != 21095) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_hush_sync_checksum_method_hushffisession_remove_member() != 16018) {
