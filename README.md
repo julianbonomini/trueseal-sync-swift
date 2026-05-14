@@ -1,195 +1,152 @@
-# HushSync Swift SDK
+# hush-sync-swift
 
-Idiomatic Swift wrapper for the [hush-sync](../hush-sync) Rust library.
+Swift SDK for [hush-sync](https://github.com/julianbonomini/hush-sync) — E2EE, local-first sync between devices. No accounts. No server that can read your data.
 
-E2EE, local-first sync between devices.  No FFI, no Noise Protocol, no raw keys.
+Wraps the Rust core via UniFFI. The public surface is pure Swift — no FFI types, no Noise Protocol, no raw pointers.
 
----
-
-## Requirements
-
-- Xcode 15 / Swift 5.9+
-- macOS 13+ · iOS 16+
+**Platforms:** macOS 13+ · iOS 16+ · Swift 5.9+ / Xcode 15+
 
 ---
 
-## Add to your project
-
-### Swift Package Manager
-
-Add the package via Xcode (**File → Add Package Dependencies…**) or in `Package.swift`:
+## Install
 
 ```swift
 // Package.swift
-dependencies: [
-    .package(url: "https://github.com/julianbonomini/hush-sync-swift", from: "0.1.0"),
-],
-targets: [
-    .target(name: "YourApp", dependencies: ["HushSync"]),
-]
+.package(url: "https://github.com/julianbonomini/hush-sync-swift", from: "0.1.0")
 ```
 
-No Rust toolchain required — a pre-built XCFramework is attached to every
-[GitHub Release](https://github.com/julianbonomini/hush-sync-swift/releases) and
-downloaded automatically by SPM.
-
----
-
-## Contributing / local development
-
-Requires a Rust toolchain and the sibling repos checked out:
-
-```
-hush/
-  hush-noise/
-  hush-sync/
-  hush-sync-swift/   ← this repo
-```
-
-```bash
-# Install Rust targets (one-time)
-rustup target add \
-    aarch64-apple-darwin x86_64-apple-darwin \
-    aarch64-apple-ios \
-    aarch64-apple-ios-sim x86_64-apple-ios
-
-# Build XCFramework + generate Swift bindings
-bash scripts/build-xcframework.sh
-```
-
-After building, swap the `binaryTarget` in your local `Package.swift` to:
-
-```swift
-.binaryTarget(name: "HushSyncFFI", path: "HushSyncFFI.xcframework")
-```
-
-> Don't commit that change — the repo's `Package.swift` uses `url:+checksum:` after each release so remote SPM consumers resolve correctly.
-
-### Releasing
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-The [release workflow](.github/workflows/release.yml) builds the XCFramework,
-creates a GitHub Release with the zip as an asset, and stamps the correct
-`url`/`checksum` back into `Package.swift` automatically.
+No Rust toolchain needed. A pre-built XCFramework ships with every [release](https://github.com/julianbonomini/hush-sync-swift/releases) and SPM downloads it automatically.
 
 ---
 
 ## Usage
 
-### 1. Initialise
+### Init
+
+You need a relay — a server that routes encrypted blobs between devices. The relay never sees plaintext; it only forwards ciphertext it can't decrypt.
 
 ```swift
 import HushSync
 
 let client = try HushSyncClient(
     relayURL: URL(string: "tcp://relay.example.com")!,
-    relayPublicKey: Data(base64Encoded: "<base64-encoded 32-byte key from your relay operator>")!
-    // ^ get this from: your relay operator's published key, or
-    //   `hush-relay --print-pubkey` if self-hosting
+    relayPublicKey: hexToData("your64charhexstring")  // 32-byte X25519 key
 )
-// storageDirectory and namespace have sensible defaults.
-// The client is immediately usable — relay connects in the background.
 ```
 
-### 2. Pair two devices
+The relay's public key is a build-time constant. Get it from your relay operator, or run `hush-relay --print-pubkey` if self-hosting. To decode a hex string:
 
-**Device A** — generates a pairing token (show as QR code, AirDrop, etc.):
+```swift
+func hexToData(_ hex: String) -> Data {
+    var data = Data()
+    var i = hex.startIndex
+    while i < hex.endIndex {
+        let j = hex.index(i, offsetBy: 2)
+        data.append(UInt8(hex[i..<j], radix: 16)!)
+        i = j
+    }
+    return data
+}
+```
+
+The client connects to the relay in the background. It's usable immediately — the outbox queues blobs and replays them once the relay is reachable.
+
+> **Required entitlement.** Without this, the relay connection silently fails:
+> ```xml
+> <!-- YourApp.entitlements -->
+> <key>com.apple.security.network.client</key>
+> <true/>
+> ```
+> Add it on both macOS and iOS targets.
+
+---
+
+### Pair two devices
+
+Devices sync within a *Sync Group* — a set of mutually-trusted devices. You bootstrap the group by pairing. One device generates a token; the other scans it; the first accepts.
+
+**Device A** — open a 60-second pairing window and get a token (show it as a QR code, send via AirDrop, etc.):
 
 ```swift
 let token = clientA.generatePairingToken()
-// display `token` to the user
 ```
 
-**Device B** — scans the token and requests to join:
+**Device B** — submit the token:
 
 ```swift
 try clientB.joinGroup(token: token)
 ```
 
-**Device A** — accepts the request:
+**Device A** — a pairing request arrives; accept it to finalise membership:
 
 ```swift
 for await request in clientA.pairingRequests {
-    print("Pairing request from: \(request.deviceName)")
+    print("Request from: \(request.deviceName)")
     clientA.acceptPairingRequest(request)
-    break   // single-use window
+    break  // token is single-use
 }
 ```
 
-### 3. Publish a clipboard entry
+After `acceptPairingRequest`, both devices are full members and can send and receive.
+
+---
+
+### Send & receive
 
 ```swift
-try await client.publish(text: "Hello from Mac")
-
-// or raw data:
+// Send — throws .notInGroup until pairing is complete
+try await client.publish(text: "hello")
 try await client.publish(someData)
-```
 
-### 4. Receive blobs
-
-```swift
+// Receive
 Task {
     for await blob in client.blobs {
-        if let text = blob.text {
-            print("Received: \(text)")
-        }
+        print(blob.text ?? "<binary>")         // convenience UTF-8 decode
+        print(blob.senderPublicKey.count)      // 32 — stable identity per device
     }
 }
 ```
 
-### 5. List & remove members
+---
 
-```swift
-let members = client.members
-print(members.map(\.name))  // ["AmberFalcon", "CrimsonOwl"]
-
-try client.removeMember(members[0])   // Soft Removal — no key rotation
-```
-
-### 6. Handle membership events
+### Membership events
 
 ```swift
 Task {
     for await event in client.memberEvents {
         switch event {
-        case .joined(let m):   print("\(m.name) joined")
-        case .left(let m):     print("\(m.name) left")
-        case .removedSelf:     print("This device was removed from the group")
-        case .groupDestroyed:  print("Group destroyed — reinitialise to start fresh")
+        case .joined(let m):   // new device admitted
+        case .left(let m):     // device removed by another member
+        case .removedSelf:     // this device was removed
+        case .groupDestroyed:  // session is terminal — all streams complete here
         }
     }
 }
 ```
 
-### 7. Destroy group (security incident)
+To remove a member (soft removal, no key rotation):
 
 ```swift
-client.destroyGroup()
-// Every member receives .groupDestroyed.
-// All devices rotate keypairs automatically on next init.
+try client.removeMember(client.members[0])
 ```
+
+To cryptographically exclude a compromised device, use `destroyGroup()` instead. Every member receives `.groupDestroyed`, all streams complete, and devices rotate keypairs on the next init.
 
 ---
 
-## Error handling
+## Errors
 
-All errors are ``HushSyncError`` — a Swift enum conforming to `Error` and `LocalizedError`.
+All errors are `HushSyncError`, conforming to `LocalizedError`.
 
-```swift
-do {
-    try await client.publish(text: "hello")
-} catch HushSyncError.notInGroup {
-    // Pairing not yet complete
-} catch HushSyncError.groupDestroyed {
-    // Reinitialise the client
-} catch {
-    print(error.localizedDescription)
-}
-```
+| Case | When |
+|------|------|
+| `.notInGroup` | Published before pairing completed |
+| `.invalidPairingToken` | Token malformed or window expired |
+| `.groupDestroyed` | Session terminal — reconstruct the client |
+| `.pushFailed(msg)` | Informational; blob is already queued in the outbox |
+| `.memberNotFound` | ID not in the current Group Manifest |
+| `.invalidRelayPublicKey` | Key not exactly 32 bytes |
+| `.invalidRelayURL` | URL missing a host component |
 
 ---
 
@@ -202,13 +159,55 @@ Your App
 HushSyncClient          ← idiomatic Swift (this SDK)
    │  @_implementationOnly import HushSyncBindings
    ▼
-HushSyncBindings        ← UniFFI-generated Swift (internal, never public)
+HushSyncBindings        ← UniFFI-generated Swift (internal)
    │
    ▼
 HushSyncFFI.xcframework ← compiled Rust (hush-sync + hush-noise)
 ```
 
-No UniFFI types, raw bytes, or Noise Protocol concepts cross the public boundary.
+No UniFFI types or FFI concepts appear in the public surface. `HushSyncBindings` is an implementation detail — never import it directly.
+
+---
+
+## Local development
+
+Requires the sibling repos checked out side-by-side:
+
+```
+hush/
+  hush-noise/
+  hush-sync/
+  hush-sync-swift/   ← this repo
+```
+
+```bash
+# One-time: install Rust targets
+rustup target add \
+    aarch64-apple-darwin x86_64-apple-darwin \
+    aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
+
+# Build XCFramework + generate Swift bindings
+bash scripts/build-xcframework.sh
+```
+
+Then point `Package.swift` at the local framework:
+
+```swift
+.binaryTarget(name: "HushSyncFFI", path: "HushSyncFFI.xcframework")
+```
+
+Don't commit that — the published `Package.swift` uses `url:+checksum:` so SPM resolves correctly for remote consumers.
+
+To cut a release: `git tag v0.x.x && git push origin v0.x.x`. The [release workflow](.github/workflows/release.yml) builds the XCFramework, attaches it to the GitHub Release, and stamps `Package.swift` with the correct `url`/`checksum` before retagging.
+
+---
+
+## Further reading
+
+- [hush-sync concepts](https://github.com/julianbonomini/hush-sync) — Group Manifest, pairing ceremony, outbox replay, delivery guarantees
+- [hush-relay](https://github.com/julianbonomini/hush-relay) — deploying and self-hosting the relay
+- [Swift SDK reference](https://github.com/julianbonomini/hush-sync-swift) — full API docs (DocC)
+- [hush ecosystem](https://github.com/julianbonomini) — hush-noise, hush-protocol, hush-clip
 
 ---
 
