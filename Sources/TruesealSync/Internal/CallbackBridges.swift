@@ -1,11 +1,11 @@
 // Internal callback bridge objects.
 //
 // Each class implements one of the UniFFI callback interface protocols from
-// HushSyncBindings and feeds events into an AsyncStream continuation.
+// TruesealSyncBindings and feeds events into an AsyncStream continuation.
 // None of these types are public — they live entirely behind the
 // @_implementationOnly import boundary.
 
-@_implementationOnly import HushSyncBindings
+@_implementationOnly import TruesealSyncBindings
 import Foundation
 
 // MARK: - Blob

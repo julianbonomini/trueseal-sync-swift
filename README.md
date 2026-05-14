@@ -1,6 +1,6 @@
-# hush-sync-swift
+# trueseal-sync-swift
 
-Swift SDK for [hush-sync](https://github.com/julianbonomini/hush-sync) — E2EE, local-first sync between devices. No accounts. No server that can read your data.
+Swift SDK for [trueseal-sync](https://github.com/julianbonomini/trueseal-sync) — E2EE, local-first sync between devices. No accounts. No server that can read your data.
 
 Wraps the Rust core via UniFFI. The public surface is pure Swift — no FFI types, no Noise Protocol, no raw pointers.
 
@@ -12,10 +12,10 @@ Wraps the Rust core via UniFFI. The public surface is pure Swift — no FFI type
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/julianbonomini/hush-sync-swift", from: "0.1.0")
+.package(url: "https://github.com/julianbonomini/trueseal-sync-swift", from: "0.1.0")
 ```
 
-No Rust toolchain needed. A pre-built XCFramework ships with every [release](https://github.com/julianbonomini/hush-sync-swift/releases) and SPM downloads it automatically.
+No Rust toolchain needed. A pre-built XCFramework ships with every [release](https://github.com/julianbonomini/trueseal-sync-swift/releases) and SPM downloads it automatically.
 
 ---
 
@@ -26,15 +26,15 @@ No Rust toolchain needed. A pre-built XCFramework ships with every [release](htt
 You need a relay — a server that routes encrypted blobs between devices. The relay never sees plaintext; it only forwards ciphertext it can't decrypt.
 
 ```swift
-import HushSync
+import TruesealSync
 
-let client = try HushSyncClient(
+let client = try TruesealSyncClient(
     relayURL: URL(string: "tcp://relay.example.com")!,
     relayPublicKey: hexToData("your64charhexstring")  // 32-byte X25519 key
 )
 ```
 
-The relay's public key is a build-time constant. Get it from your relay operator, or run `hush-relay --print-pubkey` if self-hosting. To decode a hex string:
+The relay's public key is a build-time constant. Get it from your relay operator, or run `trueseal-relay --print-pubkey` if self-hosting. To decode a hex string:
 
 ```swift
 func hexToData(_ hex: String) -> Data {
@@ -136,7 +136,7 @@ To cryptographically exclude a compromised device, use `destroyGroup()` instead.
 
 ## Errors
 
-All errors are `HushSyncError`, conforming to `LocalizedError`.
+All errors are `TruesealSyncError`, conforming to `LocalizedError`.
 
 | Case | When |
 |------|------|
@@ -154,18 +154,18 @@ All errors are `HushSyncError`, conforming to `LocalizedError`.
 
 ```
 Your App
-   │  import HushSync
+   │  import TruesealSync
    ▼
-HushSyncClient          ← idiomatic Swift (this SDK)
-   │  @_implementationOnly import HushSyncBindings
+TruesealSyncClient          ← idiomatic Swift (this SDK)
+   │  @_implementationOnly import TruesealSyncBindings
    ▼
-HushSyncBindings        ← UniFFI-generated Swift (internal)
+TruesealSyncBindings        ← UniFFI-generated Swift (internal)
    │
    ▼
-HushSyncFFI.xcframework ← compiled Rust (hush-sync + hush-noise)
+TruesealSyncFFI.xcframework ← compiled Rust (trueseal-sync + trueseal-noise)
 ```
 
-No UniFFI types or FFI concepts appear in the public surface. `HushSyncBindings` is an implementation detail — never import it directly.
+No UniFFI types or FFI concepts appear in the public surface. `TruesealSyncBindings` is an implementation detail — never import it directly.
 
 ---
 
@@ -174,10 +174,10 @@ No UniFFI types or FFI concepts appear in the public surface. `HushSyncBindings`
 Requires the sibling repos checked out side-by-side:
 
 ```
-hush/
-  hush-noise/
-  hush-sync/
-  hush-sync-swift/   ← this repo
+trueseal/
+  trueseal-noise/
+  trueseal-sync/
+  trueseal-sync-swift/   ← this repo
 ```
 
 ```bash
@@ -193,7 +193,7 @@ bash scripts/build-xcframework.sh
 Then point `Package.swift` at the local framework:
 
 ```swift
-.binaryTarget(name: "HushSyncFFI", path: "HushSyncFFI.xcframework")
+.binaryTarget(name: "TruesealSyncFFI", path: "TruesealSyncFFI.xcframework")
 ```
 
 Don't commit that — the published `Package.swift` uses `url:+checksum:` so SPM resolves correctly for remote consumers.
@@ -204,10 +204,10 @@ To cut a release: `git tag v0.x.x && git push origin v0.x.x`. The [release workf
 
 ## Further reading
 
-- [hush-sync concepts](https://github.com/julianbonomini/hush-sync) — Group Manifest, pairing ceremony, outbox replay, delivery guarantees
-- [hush-relay](https://github.com/julianbonomini/hush-relay) — deploying and self-hosting the relay
-- [Swift SDK reference](https://github.com/julianbonomini/hush-sync-swift) — full API docs (DocC)
-- [hush ecosystem](https://github.com/julianbonomini) — hush-noise, hush-protocol, hush-clip
+- [trueseal-sync concepts](https://github.com/julianbonomini/trueseal-sync) — Group Manifest, pairing ceremony, outbox replay, delivery guarantees
+- [trueseal-relay](https://github.com/julianbonomini/trueseal-relay) — deploying and self-hosting the relay
+- [Swift SDK reference](https://github.com/julianbonomini/trueseal-sync-swift) — full API docs (DocC)
+- [trueseal ecosystem](https://github.com/julianbonomini) — trueseal-noise, trueseal-protocol, trueseal-clip
 
 ---
 

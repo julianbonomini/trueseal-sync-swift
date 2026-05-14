@@ -1,10 +1,10 @@
 import Foundation
-@_implementationOnly import HushSyncBindings
+@_implementationOnly import TruesealSyncBindings
 
-/// All errors surfaced by ``HushSyncClient``.
+/// All errors surfaced by ``TruesealSyncClient``.
 ///
 /// Maps one-to-one with the Rust `SessionError` variants; zero FFI types leak through.
-public enum HushSyncError: Error, LocalizedError, Sendable {
+public enum TruesealSyncError: Error, LocalizedError, Sendable {
 
     /// Relay URL missing a host or port component.
     case invalidRelayURL
@@ -29,7 +29,7 @@ public enum HushSyncError: Error, LocalizedError, Sendable {
     /// The target member ID was not found in the current Group Manifest.
     case memberNotFound
 
-    /// The group has been destroyed.  Reconstruct ``HushSyncClient`` with the
+    /// The group has been destroyed.  Reconstruct ``TruesealSyncClient`` with the
     /// same namespace to start fresh with a new identity.
     case groupDestroyed
 
@@ -59,9 +59,9 @@ public enum HushSyncError: Error, LocalizedError, Sendable {
 
 // MARK: - Internal conversion from UniFFI SessionError
 
-// Kept internal — HushSyncBindings is imported @_implementationOnly,
+// Kept internal — TruesealSyncBindings is imported @_implementationOnly,
 // so SessionError is never visible to callers.
-extension HushSyncError {
+extension TruesealSyncError {
     init(from ffi: SessionError) {
         switch ffi {
         case .InvalidKeyLength:

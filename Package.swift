@@ -2,14 +2,14 @@
 import PackageDescription
 
 let package = Package(
-    name: "HushSync",
+    name: "TruesealSync",
     platforms: [
         .macOS(.v13),
         .iOS(.v16),
     ],
     products: [
-        // The only public-facing product.  App devs import HushSync — never HushSyncBindings.
-        .library(name: "HushSync", targets: ["HushSync"]),
+        // The only public-facing product.  App devs import TruesealSync — never TruesealSyncBindings.
+        .library(name: "TruesealSync", targets: ["TruesealSync"]),
     ],
     targets: [
         // ── 1. Compiled Rust binary (XCFramework) ────────────────────────────
@@ -18,38 +18,38 @@ let package = Package(
         // always has the correct remote reference for SPM consumers.
         //
         // For local dev: run scripts/build-xcframework.sh, then change this to
-        //   path: "HushSyncFFI.xcframework"
+        //   path: "TruesealSyncFFI.xcframework"
         // Do not commit that local change.
         .binaryTarget(
-            name: "HushSyncFFI",
-            path: "HushSyncFFI.xcframework"
+            name: "TruesealSyncFFI",
+            path: "TruesealSyncFFI.xcframework"
         ),
 
         // ── 2. Generated UniFFI Swift bindings ────────────────────────────────
-        // hush_sync.swift is produced by `uniffi-bindgen generate`.
+        // trueseal_sync.swift is produced by `uniffi-bindgen generate`.
         // NOT listed in products — internal to the package only.
-        // HushSync imports it with @_implementationOnly so none of these
+        // TruesealSync imports it with @_implementationOnly so none of these
         // types bleed into the public API.
         .target(
-            name: "HushSyncBindings",
-            dependencies: ["HushSyncFFI"],
-            path: "Sources/HushSyncBindings"
+            name: "TruesealSyncBindings",
+            dependencies: ["TruesealSyncFFI"],
+            path: "Sources/TruesealSyncBindings"
         ),
 
         // ── 3. Idiomatic Swift SDK (public) ───────────────────────────────────
         // Zero UniFFI / FFI types in the public surface.
-        // All async via Swift Concurrency; all errors via HushSyncError.
+        // All async via Swift Concurrency; all errors via TruesealSyncError.
         .target(
-            name: "HushSync",
-            dependencies: ["HushSyncBindings"],
-            path: "Sources/HushSync"
+            name: "TruesealSync",
+            dependencies: ["TruesealSyncBindings"],
+            path: "Sources/TruesealSync"
         ),
 
         // ── 4. Tests ─────────────────────────────────────────────────────────
         .testTarget(
-            name: "HushSyncTests",
-            dependencies: ["HushSync"],
-            path: "Tests/HushSyncTests"
+            name: "TruesealSyncTests",
+            dependencies: ["TruesealSync"],
+            path: "Tests/TruesealSyncTests"
         ),
     ]
 )

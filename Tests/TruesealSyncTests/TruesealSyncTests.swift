@@ -1,37 +1,37 @@
 import XCTest
-@testable import HushSync
+@testable import TruesealSync
 
 // These tests cover the pure-Swift surface: error enum, model types, and
 // stream-safe properties. They do not require a built XCFramework — any test
 // that touches HushFfiSession is marked with XCTSkipUnless to avoid failures
 // in CI when the framework is not yet compiled.
 
-final class HushSyncErrorTests: XCTestCase {
+final class TruesealSyncErrorTests: XCTestCase {
 
     // MARK: - LocalizedError descriptions
 
     func test_invalidRelayURL_description() {
-        let error = HushSyncError.invalidRelayURL
+        let error = TruesealSyncError.invalidRelayURL
         XCTAssertEqual(error.errorDescription, "Invalid relay URL — must include a host and port.")
     }
 
     func test_invalidRelayPublicKey_description() {
-        let error = HushSyncError.invalidRelayPublicKey
+        let error = TruesealSyncError.invalidRelayPublicKey
         XCTAssertEqual(error.errorDescription, "Relay public key must be exactly 32 bytes.")
     }
 
     func test_invalidNamespace_description() {
-        let error = HushSyncError.invalidNamespace("must match [a-zA-Z0-9_-]+")
+        let error = TruesealSyncError.invalidNamespace("must match [a-zA-Z0-9_-]+")
         XCTAssertTrue(error.errorDescription?.contains("must match") == true)
     }
 
     func test_pushFailed_description() {
-        let error = HushSyncError.pushFailed("connection reset")
+        let error = TruesealSyncError.pushFailed("connection reset")
         XCTAssertTrue(error.errorDescription?.contains("connection reset") == true)
     }
 
     func test_allCasesHaveDescriptions() {
-        let cases: [HushSyncError] = [
+        let cases: [TruesealSyncError] = [
             .invalidRelayURL, .invalidRelayPublicKey, .invalidNamespace("x"),
             .pushFailed("x"), .invalidPairingToken, .notInGroup,
             .memberNotFound, .groupDestroyed,
@@ -75,14 +75,14 @@ final class SyncMemberTests: XCTestCase {
     }
 }
 
-// MARK: - HushSyncClient init guards (require built XCFramework)
+// MARK: - TruesealSyncClient init guards (require built XCFramework)
 
-final class HushSyncClientInitTests: XCTestCase {
+final class TruesealSyncClientInitTests: XCTestCase {
 
     private var frameworkAvailable: Bool {
         // If the xcframework isn't built, these tests are non-fatal skips.
         // Run `bash scripts/build-xcframework.sh` first.
-        (try? HushSyncClient(
+        (try? TruesealSyncClient(
             relayURL: URL(string: "tcp://localhost")!,
             relayPublicKey: Data(repeating: 0, count: 32)
         )) != nil || true   // always attempt; failure is caught below
@@ -90,12 +90,12 @@ final class HushSyncClientInitTests: XCTestCase {
 
     func test_missingHost_throws_invalidRelayURL() throws {
         XCTAssertThrowsError(
-            try HushSyncClient(
+            try TruesealSyncClient(
                 relayURL: URL(string: "tcp://")!,
                 relayPublicKey: Data(repeating: 0, count: 32)
             )
         ) { error in
-            XCTAssertEqual(error as? HushSyncError, .invalidRelayURL)
+            XCTAssertEqual(error as? TruesealSyncError, .invalidRelayURL)
         }
     }
 }

@@ -1,6 +1,6 @@
-# HushSyncBindings — generated, do not edit
+# TruesealSyncBindings — generated, do not edit
 
-This directory contains the UniFFI-generated Swift bindings for the Rust `hush-sync` crate.
+This directory contains the UniFFI-generated Swift bindings for the Rust `trueseal-sync` crate.
 
 **Do not hand-edit** — the file is regenerated every time `scripts/build-xcframework.sh` runs.
 
@@ -13,7 +13,7 @@ This directory contains the UniFFI-generated Swift bindings for the Rust `hush-s
 ## Exposed symbols (internal to the package)
 
 These types are **not part of the public API**.  App developers never interact with them.
-They are consumed exclusively by `Sources/HushSync/` via `@_implementationOnly import HushSyncBindings`.
+They are consumed exclusively by `Sources/TruesealSync/` via `@_implementationOnly import TruesealSyncBindings`.
 
 | Symbol | Kind |
 |--------|------|

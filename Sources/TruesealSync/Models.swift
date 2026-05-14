@@ -4,7 +4,7 @@ import Foundation
 
 /// A blob delivered to this device from another member of the Sync Group.
 ///
-/// The raw bytes are whatever the sender passed to ``HushSyncClient/publish(_:)``.
+/// The raw bytes are whatever the sender passed to ``TruesealSyncClient/publish(_:)``.
 /// Use ``text`` for clipboard payloads encoded as UTF-8.
 public struct ReceivedBlob: Sendable {
     /// Raw application payload.
@@ -37,10 +37,10 @@ public struct SyncMember: Sendable, Identifiable, Hashable {
 
 /// An incoming request from another device that wants to join the Sync Group.
 ///
-/// Obtained from ``HushSyncClient/pairingRequests``.  Pass the whole value to
-/// ``HushSyncClient/acceptPairingRequest(_:)`` to admit the device.
+/// Obtained from ``TruesealSyncClient/pairingRequests``.  Pass the whole value to
+/// ``TruesealSyncClient/acceptPairingRequest(_:)`` to admit the device.
 public struct PairingRequest: Sendable {
-    /// Opaque token — pass back to ``HushSyncClient/acceptPairingRequest(_:)``.
+    /// Opaque token — pass back to ``TruesealSyncClient/acceptPairingRequest(_:)``.
     /// Never interpret the contents.
     public let token: String
 
@@ -52,7 +52,7 @@ public struct PairingRequest: Sendable {
 
 /// Lifecycle events for Sync Group membership.
 ///
-/// Delivered via ``HushSyncClient/memberEvents``.
+/// Delivered via ``TruesealSyncClient/memberEvents``.
 public enum MemberEvent: Sendable {
     /// A new device was admitted to the Sync Group (by any member).
     case joined(SyncMember)
@@ -65,7 +65,7 @@ public enum MemberEvent: Sendable {
     case removedSelf
 
     /// Any member triggered a Destroy Group.  The session is now terminal;
-    /// reconstruct ``HushSyncClient`` with the same namespace to start fresh.
+    /// reconstruct ``TruesealSyncClient`` with the same namespace to start fresh.
     case groupDestroyed
 }
 
@@ -73,7 +73,7 @@ public enum MemberEvent: Sendable {
 
 /// Informational relay connection state.
 ///
-/// Delivered via ``HushSyncClient/connectionState``.
+/// Delivered via ``TruesealSyncClient/connectionState``.
 /// The library queues outbox messages and reconnects automatically —
 /// callers may show a "syncing" indicator but should never gate on this.
 public enum ConnectionState: Sendable {

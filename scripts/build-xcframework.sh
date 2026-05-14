@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # scripts/build-xcframework.sh
 #
-# Build the hush-sync Rust library for macOS + iOS targets, generate UniFFI
-# Swift bindings, and package everything into HushSyncFFI.xcframework.
+# Build the trueseal-sync Rust library for macOS + iOS targets, generate UniFFI
+# Swift bindings, and package everything into TruesealSyncFFI.xcframework.
 #
 # Prerequisites:
 #   rustup target add aarch64-apple-darwin x86_64-apple-darwin \
@@ -20,23 +20,23 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-RUST_DIR="$(cd "$REPO_ROOT/../hush-sync" && pwd)"   # path to the Rust crate
+RUST_DIR="$(cd "$REPO_ROOT/../trueseal-sync" && pwd)"   # path to the Rust crate
 
 PROFILE="${PROFILE:-release}"
 CARGO_FLAGS=()
 [[ "$PROFILE" == "release" ]] && CARGO_FLAGS+=("--release")
 
-CRATE_NAME="hush_sync"           # underscored crate name
+CRATE_NAME="trueseal_sync"           # underscored crate name
 LIB_NAME="lib${CRATE_NAME}.a"
 
 # Use a writable target dir outside the Rust crate to avoid com.apple.provenance
 # lock files that macOS stamps on files inside the source tree.
-export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-/tmp/hush-sync-build}"
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-/tmp/trueseal-sync-build}"
 
 BUILD_DIR="$CARGO_TARGET_DIR"
 OUT_DIR="$REPO_ROOT/build"
-XCFRAMEWORK_DIR="$REPO_ROOT/HushSyncFFI.xcframework"
-BINDINGS_DIR="$REPO_ROOT/Sources/HushSyncBindings"
+XCFRAMEWORK_DIR="$REPO_ROOT/TruesealSyncFFI.xcframework"
+BINDINGS_DIR="$REPO_ROOT/Sources/TruesealSyncBindings"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -60,7 +60,7 @@ if [[ -x "$HOME/.cargo/bin/cargo" ]]; then
 fi
 require cargo
 
-step "Building hush-sync for all targets (profile=$PROFILE)"
+step "Building trueseal-sync for all targets (profile=$PROFILE)"
 
 TARGETS=(
     "aarch64-apple-darwin"
@@ -113,9 +113,9 @@ step "Generating UniFFI Swift bindings"
 
 # Use the in-tree binary (cargo run --bin uniffi-bindgen).
 # The generated files land in OUT_DIR/bindings/:
-#   hush_sync.swift
-#   hush_syncFFI.h
-#   hush_syncFFI.modulemap
+#   trueseal_sync.swift
+#   trueseal_syncFFI.h
+#   trueseal_syncFFI.modulemap
 BINDGEN_OUT="$OUT_DIR/bindings"
 mkdir -p "$BINDGEN_OUT"
 
@@ -144,7 +144,7 @@ done
 
 # ── Assemble XCFramework ──────────────────────────────────────────────────────
 
-step "Assembling HushSyncFFI.xcframework"
+step "Assembling TruesealSyncFFI.xcframework"
 rm -rf "$XCFRAMEWORK_DIR"
 
 xcodebuild -create-xcframework \
@@ -155,9 +155,9 @@ xcodebuild -create-xcframework \
 
 ok "XCFramework: $XCFRAMEWORK_DIR"
 
-# ── Copy generated Swift file into HushSyncBindings ──────────────────────────
+# ── Copy generated Swift file into TruesealSyncBindings ──────────────────────────
 
-step "Installing Swift bindings into Sources/HushSyncBindings/"
+step "Installing Swift bindings into Sources/TruesealSyncBindings/"
 rm -f "$BINDINGS_DIR/Placeholder.swift"  # remove compile-time stub
 cp "$BINDGEN_OUT/${CRATE_NAME}.swift" "$BINDINGS_DIR/${CRATE_NAME}.swift"
 ok "Bindings installed: $BINDINGS_DIR/${CRATE_NAME}.swift"
@@ -166,6 +166,6 @@ ok "Bindings installed: $BINDINGS_DIR/${CRATE_NAME}.swift"
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║  HushSyncFFI.xcframework ready.                             ║"
+echo "║  TruesealSyncFFI.xcframework ready.                             ║"
 echo "║  Run 'swift build' or open in Xcode to verify.             ║"
 echo "╚══════════════════════════════════════════════════════════════╝"

@@ -1,8 +1,8 @@
 import Foundation
 
-@_implementationOnly import HushSyncBindings
+@_implementationOnly import TruesealSyncBindings
 
-/// The entry point for the HushSync SDK.
+/// The entry point for the TruesealSync SDK.
 ///
 /// Wraps a Rust `HushFfiSession` with an idiomatic Swift concurrency API.
 /// No FFI types, raw bytes, or Noise Protocol concepts appear in the public surface.
@@ -10,7 +10,7 @@ import Foundation
 /// ## Lifecycle
 ///
 /// ```swift
-/// let client = try HushSyncClient(
+/// let client = try TruesealSyncClient(
 ///     relayURL: URL(string: "tcp://relay.example.com")!,
 ///     relayPublicKey: Data(base64Encoded: "<base64 key from relay operator>")!
 /// )
@@ -35,7 +35,7 @@ import Foundation
 ///     print(blob.text ?? "<binary>")
 /// }
 /// ```
-public final class HushSyncClient: @unchecked Sendable {
+public final class TruesealSyncClient: @unchecked Sendable {
 
     // MARK: - Private state
 
@@ -70,30 +70,30 @@ public final class HushSyncClient: @unchecked Sendable {
 
     // MARK: - Init
 
-    /// Create a HushSync client.
+    /// Create a TruesealSync client.
     ///
     /// - Parameters:
     ///   - relayURL: Relay hostname, e.g. `tcp://relay.example.com`.
     ///               Must include a host. The port is **ignored** — the relay manages
     ///               its own ports internally. Only the host component is used.
     ///   - relayPublicKey: 32-byte X25519 public key of the relay (obtained from your
-    ///                     relay operator).  Wrong length throws ``HushSyncError/invalidRelayPublicKey``.
+    ///                     relay operator).  Wrong length throws ``TruesealSyncError/invalidRelayPublicKey``.
     ///   - storageDirectory: Directory for the session state database.
-    ///                       Defaults to `Application Support/HushSync/`.
+    ///                       Defaults to `Application Support/TruesealSync/`.
     ///   - namespace: Scopes the local database.  One client per namespace.
     ///                Valid pattern: `[a-zA-Z0-9_-]+`. Defaults to `"default"`.
     ///
-    /// - Throws: ``HushSyncError`` for invalid arguments.
+    /// - Throws: ``TruesealSyncError`` for invalid arguments.
     ///           Never throws for relay connectivity — the client starts offline and
     ///           reconnects in the background.
     public init(
         relayURL: URL,
         relayPublicKey: Data,
-        storageDirectory: URL = .defaultHushSyncStorage,
+        storageDirectory: URL = .defaultTruesealSyncStorage,
         namespace: String = "default"
     ) throws {
         guard let host = relayURL.host else {
-            throw HushSyncError.invalidRelayURL
+            throw TruesealSyncError.invalidRelayURL
         }
         let baseDir = storageDirectory.path
 
@@ -125,7 +125,7 @@ public final class HushSyncClient: @unchecked Sendable {
                 onConnectionChanged: ConnectionChangedCallbackHandler(continuation: connCont)
             )
         } catch let e as SessionError {
-            throw HushSyncError(from: e)
+            throw TruesealSyncError(from: e)
         }
 
         // Wire post-init callbacks (member request, joined, left).
@@ -155,12 +155,12 @@ public final class HushSyncClient: @unchecked Sendable {
     /// ``acceptPairingRequest(_:)`` to finalise membership.
     ///
     /// - Parameter token: Token obtained from the initiating device (QR scan, etc.).
-    /// - Throws: ``HushSyncError/invalidPairingToken`` if the token is malformed or expired.
+    /// - Throws: ``TruesealSyncError/invalidPairingToken`` if the token is malformed or expired.
     public func joinGroup(token: String) throws {
         do {
             try session.joinGroup(token: token)
         } catch let e as SessionError {
-            throw HushSyncError(from: e)
+            throw TruesealSyncError(from: e)
         }
     }
 
@@ -185,17 +185,17 @@ public final class HushSyncClient: @unchecked Sendable {
     ///
     /// If the relay is unreachable, the blob is durably queued in the local outbox
     /// and delivered automatically on reconnect.  Callers should **not** retry on error —
-    /// ``HushSyncError/pushFailed(_:)`` is informational; the blob is already queued.
+    /// ``TruesealSyncError/pushFailed(_:)`` is informational; the blob is already queued.
     ///
     /// - Parameter data: Application payload.  The relay never sees the plaintext.
-    /// - Throws: ``HushSyncError/notInGroup`` if pairing has not completed.
-    ///           ``HushSyncError/groupDestroyed`` if the group has been destroyed.
+    /// - Throws: ``TruesealSyncError/notInGroup`` if pairing has not completed.
+    ///           ``TruesealSyncError/groupDestroyed`` if the group has been destroyed.
     public func publish(_ data: Data) async throws {
         try await Task.detached(priority: .userInitiated) { [session = self.session] in
             do {
                 try session.send(blob: data)
             } catch let e as SessionError {
-                throw HushSyncError(from: e)
+                throw TruesealSyncError(from: e)
             }
         }.value
     }
@@ -241,12 +241,12 @@ public final class HushSyncClient: @unchecked Sendable {
     /// if a device is compromised and cryptographic exclusion is required.
     ///
     /// - Parameter member: A value obtained from ``members``.
-    /// - Throws: ``HushSyncError/notInGroup``, ``HushSyncError/memberNotFound``.
+    /// - Throws: ``TruesealSyncError/notInGroup``, ``TruesealSyncError/memberNotFound``.
     public func removeMember(_ member: SyncMember) throws {
         do {
             try session.removeMember(memberId: member.id)
         } catch let e as SessionError {
-            throw HushSyncError(from: e)
+            throw TruesealSyncError(from: e)
         }
     }
 
@@ -261,7 +261,7 @@ public final class HushSyncClient: @unchecked Sendable {
     /// Use this for security incidents (stolen/compromised device).  For routine
     /// member removal, prefer ``removeMember(_:)``.
     ///
-    /// After calling this, create a new ``HushSyncClient`` with the same namespace
+    /// After calling this, create a new ``TruesealSyncClient`` with the same namespace
     /// to start fresh with a new identity.
     public func destroyGroup() {
         session.destroyGroup()
@@ -271,12 +271,12 @@ public final class HushSyncClient: @unchecked Sendable {
 // MARK: - Default storage directory
 
 public extension URL {
-    static var defaultHushSyncStorage: URL {
+    static var defaultTruesealSyncStorage: URL {
         let appSupport = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
         ).first ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        let dir = appSupport.appendingPathComponent("HushSync", isDirectory: true)
+        let dir = appSupport.appendingPathComponent("TruesealSync", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }

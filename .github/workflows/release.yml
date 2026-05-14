@@ -15,25 +15,25 @@ jobs:
 
     steps:
       # ── Checkouts ───────────────────────────────────────────────────────────
-      # Repos must be siblings so the Cargo path deps (../hush-noise/rust)
-      # and the build script (../hush-sync) resolve correctly.
+      # Repos must be siblings so the Cargo path deps (../trueseal-noise/rust)
+      # and the build script (../trueseal-sync) resolve correctly.
 
-      - name: Checkout hush-sync-swift
+      - name: Checkout trueseal-sync-swift
         uses: actions/checkout@v4
         with:
-          path: hush-sync-swift
+          path: trueseal-sync-swift
 
-      - name: Checkout hush-sync
+      - name: Checkout trueseal-sync
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.repository_owner }}/hush-sync
-          path: hush-sync
+          repository: ${{ github.repository_owner }}/trueseal-sync
+          path: trueseal-sync
 
-      - name: Checkout hush-noise
+      - name: Checkout trueseal-noise
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.repository_owner }}/hush-noise
-          path: hush-noise
+          repository: ${{ github.repository_owner }}/trueseal-noise
+          path: trueseal-noise
 
       # ── Rust toolchain ───────────────────────────────────────────────────────
 
@@ -47,34 +47,34 @@ jobs:
       - name: Cache Rust build artefacts
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: hush-sync -> target
+          workspaces: trueseal-sync -> target
 
       # ── Build ────────────────────────────────────────────────────────────────
 
-      # hush-sync Cargo.toml only declares cdylib + lib (rlib); XCFramework
+      # trueseal-sync Cargo.toml only declares cdylib + lib (rlib); XCFramework
       # needs a static archive (.a). Patch before building — ephemeral in CI.
-      - name: Add staticlib to hush-sync crate-type
+      - name: Add staticlib to trueseal-sync crate-type
         run: |
           sed -i '' \
             's/crate-type = \["cdylib", "lib"\]/crate-type = ["cdylib", "staticlib", "lib"]/' \
-            hush-sync/Cargo.toml
-          grep crate-type hush-sync/Cargo.toml
+            trueseal-sync/Cargo.toml
+          grep crate-type trueseal-sync/Cargo.toml
 
       - name: Build XCFramework
-        working-directory: hush-sync-swift
+        working-directory: trueseal-sync-swift
         run: bash scripts/build-xcframework.sh
 
       # ── Package ──────────────────────────────────────────────────────────────
 
       - name: Zip XCFramework
-        working-directory: hush-sync-swift
-        run: zip -r HushSyncFFI.xcframework.zip HushSyncFFI.xcframework
+        working-directory: trueseal-sync-swift
+        run: zip -r TruesealSyncFFI.xcframework.zip TruesealSyncFFI.xcframework
 
       - name: Compute checksum
         id: checksum
-        working-directory: hush-sync-swift
+        working-directory: trueseal-sync-swift
         run: |
-          echo "value=$(swift package compute-checksum HushSyncFFI.xcframework.zip)" \
+          echo "value=$(swift package compute-checksum TruesealSyncFFI.xcframework.zip)" \
             >> "$GITHUB_OUTPUT"
 
       # ── Stamp Package.swift in-memory only ───────────────────────────────────
@@ -83,15 +83,15 @@ jobs:
       # This is NOT committed back — source stays as path: for local dev.
 
       - name: Stamp Package.swift with release URL and checksum
-        working-directory: hush-sync-swift
+        working-directory: trueseal-sync-swift
         env:
           TAG:      ${{ github.ref_name }}
           CHECKSUM: ${{ steps.checksum.outputs.value }}
           REPO:     ${{ github.repository }}
         run: |
-          URL="https://github.com/${REPO}/releases/download/${TAG}/HushSyncFFI.xcframework.zip"
+          URL="https://github.com/${REPO}/releases/download/${TAG}/TruesealSyncFFI.xcframework.zip"
           sed -i '' \
-            -e "s|path: \"HushSyncFFI.xcframework\"|url: \"${URL}\", checksum: \"${CHECKSUM}\"|" \
+            -e "s|path: \"TruesealSyncFFI.xcframework\"|url: \"${URL}\", checksum: \"${CHECKSUM}\"|" \
             Package.swift
           echo "Stamped: $URL  ($CHECKSUM)"
           grep -A2 "binaryTarget" Package.swift | grep -E "url|path"
@@ -103,19 +103,19 @@ jobs:
       # Source tree never contains a stale path: reference after a release.
 
       - name: Commit stamped Package.swift and bindings to main
-        working-directory: hush-sync-swift
+        working-directory: trueseal-sync-swift
         env:
           TAG: ${{ github.ref_name }}
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Package.swift Sources/HushSyncBindings/
+          git add Package.swift Sources/TruesealSyncBindings/
           git diff --cached --quiet \
             || git commit -m "chore: stamp Package.swift and update bindings for ${TAG} [skip ci]"
           git push origin HEAD:main
 
       - name: Move tag to stamped commit
-        working-directory: hush-sync-swift
+        working-directory: trueseal-sync-swift
         env:
           TAG: ${{ github.ref_name }}
         run: |
@@ -129,6 +129,6 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: hush-sync-swift/HushSyncFFI.xcframework.zip
+          files: trueseal-sync-swift/TruesealSyncFFI.xcframework.zip
           generate_release_notes: true
           fail_on_unmatched_files: true
