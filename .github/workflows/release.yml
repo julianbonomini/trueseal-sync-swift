@@ -96,22 +96,31 @@ jobs:
           echo "Stamped: $URL  ($CHECKSUM)"
           grep -A2 "binaryTarget" Package.swift | grep -E "url|path"
 
-      # ── Commit generated UniFFI bindings to main ──────────────────────────────
-      # Only commits Sources/HushSyncBindings/hush_sync.swift so the generated
-      # file is available for local dev without running the build script.
-      # Package.swift is intentionally NOT committed (stays as path:).
+      # ── Commit Package.swift + bindings, retag ─────────────────────────────
+      # Package.swift is stamped with url:+checksum: above.
+      # We commit it (+ the generated bindings) and force-move the release tag
+      # to that commit so that SPM remote consumers resolve correctly.
+      # Source tree never contains a stale path: reference after a release.
 
-      - name: Commit generated bindings to main
+      - name: Commit stamped Package.swift and bindings to main
         working-directory: hush-sync-swift
         env:
           TAG: ${{ github.ref_name }}
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Sources/HushSyncBindings/
+          git add Package.swift Sources/HushSyncBindings/
           git diff --cached --quiet \
-            || git commit -m "chore: update UniFFI bindings for ${TAG} [skip ci]"
+            || git commit -m "chore: stamp Package.swift and update bindings for ${TAG} [skip ci]"
           git push origin HEAD:main
+
+      - name: Move tag to stamped commit
+        working-directory: hush-sync-swift
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          git tag -f "$TAG"
+          git push origin "$TAG" --force
 
       # ── GitHub Release ───────────────────────────────────────────────────────
       # The zip contains the stamped Package.swift (url:+checksum:) so remote

@@ -38,16 +38,33 @@ final class MemberRemovedCallbackHandler: RemovedFromGroupCallback {
 
 // MARK: - Group destroyed
 
+/// Finishes ALL four streams when the group is destroyed so that callers
+/// iterating `blobs`, `pairingRequests`, or `connectionState` are not left
+/// hanging in a `for await` loop forever.
 final class GroupDestroyedCallbackHandler: GroupDestroyedCallback {
-    private let continuation: AsyncStream<MemberEvent>.Continuation
+    private let memberContinuation: AsyncStream<MemberEvent>.Continuation
+    private let blobContinuation: AsyncStream<ReceivedBlob>.Continuation
+    private let pairingContinuation: AsyncStream<PairingRequest>.Continuation
+    private let connectionContinuation: AsyncStream<ConnectionState>.Continuation
 
-    init(continuation: AsyncStream<MemberEvent>.Continuation) {
-        self.continuation = continuation
+    init(
+        memberContinuation: AsyncStream<MemberEvent>.Continuation,
+        blobContinuation: AsyncStream<ReceivedBlob>.Continuation,
+        pairingContinuation: AsyncStream<PairingRequest>.Continuation,
+        connectionContinuation: AsyncStream<ConnectionState>.Continuation
+    ) {
+        self.memberContinuation = memberContinuation
+        self.blobContinuation = blobContinuation
+        self.pairingContinuation = pairingContinuation
+        self.connectionContinuation = connectionContinuation
     }
 
     func onGroupDestroyed() {
-        continuation.yield(.groupDestroyed)
-        continuation.finish()
+        memberContinuation.yield(.groupDestroyed)
+        memberContinuation.finish()
+        blobContinuation.finish()
+        pairingContinuation.finish()
+        connectionContinuation.finish()
     }
 }
 

@@ -13,12 +13,13 @@ let package = Package(
     ],
     targets: [
         // ── 1. Compiled Rust binary (XCFramework) ────────────────────────────
-        // path: is used for local development and as the canonical form in source
-        // control. CI swaps this to url:+checksum: in-memory at release time
-        // (without committing back), so the tag always contains path: and works
-        // for both local references and released packages.
+        // path: is used for local development.  On every release the CI workflow
+        // stamps this to url:+checksum:, commits, and retagsso the published tag
+        // always has the correct remote reference for SPM consumers.
         //
-        // Before using locally: run scripts/build-xcframework.sh once.
+        // For local dev: run scripts/build-xcframework.sh, then change this to
+        //   path: "HushSyncFFI.xcframework"
+        // Do not commit that local change.
         .binaryTarget(
             name: "HushSyncFFI",
             path: "HushSyncFFI.xcframework"

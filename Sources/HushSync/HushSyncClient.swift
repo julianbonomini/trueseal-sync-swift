@@ -11,8 +11,8 @@ import Foundation
 ///
 /// ```swift
 /// let client = try HushSyncClient(
-///     relayURL: URL(string: "tcp://relay.example.com:4433")!,
-///     relayPublicKey: Data(base64Encoded: "...")!
+///     relayURL: URL(string: "tcp://relay.example.com")!,
+///     relayPublicKey: Data(base64Encoded: "<base64 key from relay operator>")!
 /// )
 /// ```
 ///
@@ -73,8 +73,9 @@ public final class HushSyncClient: @unchecked Sendable {
     /// Create a HushSync client.
     ///
     /// - Parameters:
-    ///   - relayURL: TCP address of the relay, e.g. `tcp://relay.example.com:4433`.
-    ///               Must include a host and port.
+    ///   - relayURL: Relay hostname, e.g. `tcp://relay.example.com`.
+    ///               Must include a host. The port is **ignored** — the relay manages
+    ///               its own ports internally. Only the host component is used.
     ///   - relayPublicKey: 32-byte X25519 public key of the relay (obtained from your
     ///                     relay operator).  Wrong length throws ``HushSyncError/invalidRelayPublicKey``.
     ///   - storageDirectory: Directory for the session state database.
@@ -115,7 +116,12 @@ public final class HushSyncClient: @unchecked Sendable {
                 relayPub: relayPublicKey,
                 onMessage:           BlobCallbackHandler(continuation: blobCont),
                 onRemovedFromGroup:  MemberRemovedCallbackHandler(continuation: memberCont),
-                onGroupDestroyed:    GroupDestroyedCallbackHandler(continuation: memberCont),
+                onGroupDestroyed:    GroupDestroyedCallbackHandler(
+                    memberContinuation:     memberCont,
+                    blobContinuation:       blobCont,
+                    pairingContinuation:    pairingCont,
+                    connectionContinuation: connCont
+                ),
                 onConnectionChanged: ConnectionChangedCallbackHandler(continuation: connCont)
             )
         } catch let e as SessionError {
@@ -199,8 +205,8 @@ public final class HushSyncClient: @unchecked Sendable {
     /// - Parameter text: The string to publish.
     /// - Throws: Same as ``publish(_:)``.
     public func publish(text: String) async throws {
-        guard let data = text.data(using: .utf8) else { return }
-        try await publish(data)
+        // Swift String is always valid UTF-8; Data(text.utf8) is infallible.
+        try await publish(Data(text.utf8))
     }
 
     // MARK: - Members

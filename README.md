@@ -22,7 +22,7 @@ Add the package via Xcode (**File → Add Package Dependencies…**) or in `Pack
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/your-org/hush-sync-swift", from: "0.1.0"),
+    .package(url: "https://github.com/julianbonomini/hush-sync-swift", from: "0.1.0"),
 ],
 targets: [
     .target(name: "YourApp", dependencies: ["HushSync"]),
@@ -30,7 +30,7 @@ targets: [
 ```
 
 No Rust toolchain required — a pre-built XCFramework is attached to every
-[GitHub Release](https://github.com/your-org/hush-sync-swift/releases) and
+[GitHub Release](https://github.com/julianbonomini/hush-sync-swift/releases) and
 downloaded automatically by SPM.
 
 ---
@@ -57,13 +57,13 @@ rustup target add \
 bash scripts/build-xcframework.sh
 ```
 
-Then temporarily swap the `binaryTarget` in `Package.swift` to:
+After building, swap the `binaryTarget` in your local `Package.swift` to:
 
 ```swift
 .binaryTarget(name: "HushSyncFFI", path: "HushSyncFFI.xcframework")
 ```
 
-> Don't commit that change — CI stamps the `url`/`checksum` on every release.
+> Don't commit that change — the repo's `Package.swift` uses `url:+checksum:` after each release so remote SPM consumers resolve correctly.
 
 ### Releasing
 
@@ -86,8 +86,10 @@ creates a GitHub Release with the zip as an asset, and stamps the correct
 import HushSync
 
 let client = try HushSyncClient(
-    relayURL: URL(string: "tcp://relay.example.com:4433")!,
-    relayPublicKey: Data(base64Encoded: "<32-byte relay pub key, base64>")!
+    relayURL: URL(string: "tcp://relay.example.com")!,
+    relayPublicKey: Data(base64Encoded: "<base64-encoded 32-byte key from your relay operator>")!
+    // ^ get this from: your relay operator's published key, or
+    //   `hush-relay --print-pubkey` if self-hosting
 )
 // storageDirectory and namespace have sensible defaults.
 // The client is immediately usable — relay connects in the background.
