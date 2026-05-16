@@ -4,7 +4,7 @@ import Foundation
 /// All errors surfaced by ``TruesealSyncClient``.
 ///
 /// Maps one-to-one with the Rust `SessionError` variants; zero FFI types leak through.
-public enum TruesealSyncError: Error, LocalizedError, Sendable {
+public enum TruesealSyncError: Error, LocalizedError, Sendable, Equatable {
 
     /// Relay URL missing a host or port component.
     case invalidRelayURL
