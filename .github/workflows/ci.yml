@@ -33,6 +33,7 @@ jobs:
           unzip -q trueseal-sync-swift.zip
           rm -rf TruesealSyncFFI.xcframework
           cp -R trueseal-swift-staging/TruesealSyncFFI.xcframework .
+          rm -f Sources/TruesealSyncBindings/*.swift
           cp trueseal-swift-staging/trueseal_sync.swift \
              Sources/TruesealSyncBindings/trueseal_sync.swift
 
