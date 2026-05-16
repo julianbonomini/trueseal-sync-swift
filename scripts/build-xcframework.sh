@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # scripts/build-xcframework.sh
 #
+# LOCAL DEVELOPMENT ONLY — not used by CI.
+# CI downloads a prebuilt XCFramework + bindings from the trueseal-sync GitHub
+# release (see .github/workflows/ci.yml and .github/workflows/release.yml).
+#
 # Build the trueseal-sync Rust library for macOS + iOS targets, generate UniFFI
 # Swift bindings, and package everything into TruesealSyncFFI.xcframework.
 #

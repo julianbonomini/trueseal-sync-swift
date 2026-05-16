@@ -198,7 +198,9 @@ Then point `Package.swift` at the local framework:
 
 Don't commit that — the published `Package.swift` uses `url:+checksum:` so SPM resolves correctly for remote consumers.
 
-To cut a release: `git tag v0.x.x && git push origin v0.x.x`. The [release workflow](.github/workflows/release.yml) builds the XCFramework, attaches it to the GitHub Release, and stamps `Package.swift` with the correct `url`/`checksum` before retagging.
+To cut a release: `git tag v0.x.x && git push origin v0.x.x`. The [release workflow](.github/workflows/release.yml) downloads the prebuilt XCFramework from the matching `trueseal-sync` release (pinned via the `TRUESEAL_SYNC_TAG` repo variable in GitHub Settings → Variables), attaches it to the GitHub Release, and stamps `Package.swift` with the correct `url`/`checksum` before retagging.
+
+> **Note:** `scripts/build-xcframework.sh` is for local development only. CI does not run it — it downloads the prebuilt artifact from [trueseal-sync releases](https://github.com/julianbonomini/trueseal-sync/releases) instead.
 
 ---
 

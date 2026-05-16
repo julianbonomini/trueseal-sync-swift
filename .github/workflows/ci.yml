@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  TRUESEAL_SYNC_TAG: v0.4.0
+
+jobs:
+  ci:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Download prebuilt xcframework + UniFFI bindings from trueseal-sync release.
+      # Pin the version via the TRUESEAL_SYNC_TAG repo variable (Settings → Variables).
+      - name: Download trueseal-sync release artifacts
+        env:
+          GH_TOKEN: ${{ secrets.TRUESEAL_READ_TOKEN }}
+        run: |
+          gh release download ${{ env.TRUESEAL_SYNC_TAG }} \
+            --repo ${{ github.repository_owner }}/trueseal-sync \
+            --pattern "trueseal-sync-swift-${{ env.TRUESEAL_SYNC_TAG }}.zip" \
+            --output trueseal-sync-swift.zip
+
+      - name: Extract xcframework and bindings
+        run: |
+          unzip -q trueseal-sync-swift.zip
+          rm -rf TruesealSyncFFI.xcframework
+          cp -R trueseal-swift-staging/TruesealSyncFFI.xcframework .
+          cp trueseal-swift-staging/trueseal_sync.swift \
+             Sources/TruesealSyncBindings/trueseal_sync.swift
+
+      - name: Swift build
+        run: swift build
+
+      - name: Swift test
+        run: swift test

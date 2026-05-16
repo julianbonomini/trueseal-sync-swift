@@ -1,4 +1,4 @@
-name: Release XCFramework
+name: Release
 
 # Triggered by a version tag, e.g.: git tag v0.1.0 && git push origin v0.1.0
 on:
@@ -6,84 +6,62 @@ on:
     tags:
       - 'v[0-9]*'
 
+env:
+  TRUESEAL_SYNC_TAG: v0.4.0
+
 permissions:
   contents: write
 
 jobs:
   release:
-    runs-on: macos-14   # Apple Silicon, Xcode 15+
+    runs-on: macos-latest
 
     steps:
-      # ── Checkouts ───────────────────────────────────────────────────────────
-      # Repos must be siblings so the Cargo path deps (../trueseal-noise/rust)
-      # and the build script (../trueseal-sync) resolve correctly.
-
-      - name: Checkout trueseal-sync-swift
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          path: trueseal-sync-swift
 
-      - name: Checkout trueseal-sync
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository_owner }}/trueseal-sync
-          path: trueseal-sync
-
-      - name: Checkout trueseal-noise
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository_owner }}/trueseal-noise
-          path: trueseal-noise
-
-      # ── Rust toolchain ───────────────────────────────────────────────────────
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: >-
-            aarch64-apple-darwin,x86_64-apple-darwin,
-            aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
-
-      - name: Cache Rust build artefacts
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: trueseal-sync -> target
-
-      # ── Build ────────────────────────────────────────────────────────────────
-
-      # trueseal-sync Cargo.toml only declares cdylib + lib (rlib); XCFramework
-      # needs a static archive (.a). Patch before building — ephemeral in CI.
-      - name: Add staticlib to trueseal-sync crate-type
+      # Download prebuilt xcframework + UniFFI bindings from trueseal-sync release.
+      # Pin the version via the TRUESEAL_SYNC_TAG repo variable (Settings → Variables).
+      - name: Download trueseal-sync release artifacts
+        env:
+          GH_TOKEN: ${{ secrets.TRUESEAL_READ_TOKEN }}
         run: |
-          sed -i '' \
-            's/crate-type = \["cdylib", "lib"\]/crate-type = ["cdylib", "staticlib", "lib"]/' \
-            trueseal-sync/Cargo.toml
-          grep crate-type trueseal-sync/Cargo.toml
+          gh release download ${{ env.TRUESEAL_SYNC_TAG }} \
+            --repo ${{ github.repository_owner }}/trueseal-sync \
+            --pattern "trueseal-sync-swift-${{ env.TRUESEAL_SYNC_TAG }}.zip" \
+            --output trueseal-sync-swift.zip
 
-      - name: Build XCFramework
-        working-directory: trueseal-sync-swift
-        run: bash scripts/build-xcframework.sh
+      - name: Extract xcframework and bindings
+        run: |
+          unzip -q trueseal-sync-swift.zip
+          rm -rf TruesealSyncFFI.xcframework
+          cp -R trueseal-swift-staging/TruesealSyncFFI.xcframework .
+          cp trueseal-swift-staging/trueseal_sync.swift \
+             Sources/TruesealSyncBindings/trueseal_sync.swift
+
+      - name: Swift build
+        run: swift build
+
+      - name: Swift test
+        run: swift test
 
       # ── Package ──────────────────────────────────────────────────────────────
 
       - name: Zip XCFramework
-        working-directory: trueseal-sync-swift
         run: zip -r TruesealSyncFFI.xcframework.zip TruesealSyncFFI.xcframework
 
       - name: Compute checksum
         id: checksum
-        working-directory: trueseal-sync-swift
         run: |
           echo "value=$(swift package compute-checksum TruesealSyncFFI.xcframework.zip)" \
             >> "$GITHUB_OUTPUT"
 
-      # ── Stamp Package.swift in-memory only ───────────────────────────────────
-      # Swap path: → url:+checksum: so the GitHub Release artifact has the
-      # correct Package.swift for remote consumers.
-      # This is NOT committed back — source stays as path: for local dev.
+      # ── Stamp Package.swift ──────────────────────────────────────────────────
+      # Swap path: → url:+checksum: so SPM consumers resolve the remote artifact.
+      # This IS committed back so the published tag always has the correct reference.
+      # Source repo keeps path: for local dev — release workflow stamps on each tag.
 
       - name: Stamp Package.swift with release URL and checksum
-        working-directory: trueseal-sync-swift
         env:
           TAG:      ${{ github.ref_name }}
           CHECKSUM: ${{ steps.checksum.outputs.value }}
@@ -93,17 +71,11 @@ jobs:
           sed -i '' \
             -e "s|path: \"TruesealSyncFFI.xcframework\"|url: \"${URL}\", checksum: \"${CHECKSUM}\"|" \
             Package.swift
-          echo "Stamped: $URL  ($CHECKSUM)"
-          grep -A2 "binaryTarget" Package.swift | grep -E "url|path"
+          echo "Stamped: $URL ($CHECKSUM)"
 
-      # ── Commit Package.swift + bindings, retag ─────────────────────────────
-      # Package.swift is stamped with url:+checksum: above.
-      # We commit it (+ the generated bindings) and force-move the release tag
-      # to that commit so that SPM remote consumers resolve correctly.
-      # Source tree never contains a stale path: reference after a release.
+      # ── Commit stamped Package.swift + bindings, retag ───────────────────────
 
       - name: Commit stamped Package.swift and bindings to main
-        working-directory: trueseal-sync-swift
         env:
           TAG: ${{ github.ref_name }}
         run: |
@@ -115,20 +87,20 @@ jobs:
           git push origin HEAD:main
 
       - name: Move tag to stamped commit
-        working-directory: trueseal-sync-swift
         env:
           TAG: ${{ github.ref_name }}
         run: |
           git tag -f "$TAG"
           git push origin "$TAG" --force
 
-      # ── GitHub Release ───────────────────────────────────────────────────────
-      # The zip contains the stamped Package.swift (url:+checksum:) so remote
-      # consumers resolve correctly. Source repo keeps path: for local dev.
+      # ── GitHub Release ────────────────────────────────────────────────────────
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: trueseal-sync-swift/TruesealSyncFFI.xcframework.zip
+          files: TruesealSyncFFI.xcframework.zip
+          body: |
+            **trueseal-sync**: ${{ env.TRUESEAL_SYNC_TAG }}
+            **checksum**: ${{ steps.checksum.outputs.value }}
           generate_release_notes: true
           fail_on_unmatched_files: true
