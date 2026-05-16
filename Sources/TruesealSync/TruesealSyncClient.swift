@@ -4,7 +4,7 @@ import Foundation
 
 /// The entry point for the TruesealSync SDK.
 ///
-/// Wraps a Rust `HushFfiSession` with an idiomatic Swift concurrency API.
+/// Wraps a Rust `TruesealFfiSession` with an idiomatic Swift concurrency API.
 /// No FFI types, raw bytes, or Noise Protocol concepts appear in the public surface.
 ///
 /// ## Lifecycle
@@ -39,7 +39,7 @@ public final class TruesealSyncClient: @unchecked Sendable {
 
     // MARK: - Private state
 
-    private let session: HushFfiSession
+    private let session: TruesealFfiSession
 
     // MARK: - Public async streams
 
@@ -109,7 +109,7 @@ public final class TruesealSyncClient: @unchecked Sendable {
         self.connectionState = connStream
 
         do {
-            self.session = try HushFfiSession.create(
+            self.session = try TruesealFfiSession.create(
                 baseDir: baseDir,
                 namespace: namespace,
                 relayHost: host,
