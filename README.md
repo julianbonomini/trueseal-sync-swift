@@ -206,7 +206,8 @@ To cut a release: `git tag v0.x.x && git push origin v0.x.x`. The [release workf
 
 ## Further reading
 
-- [trueseal-sync concepts](https://github.com/julianbonomini/trueseal-sync) — Group Manifest, pairing ceremony, outbox replay, delivery guarantees
+- [trueseal-sync overview](https://trueseal.dev/docs/components/trueseal-sync/overview) — concepts, Group Manifest, pairing ceremony, outbox replay, delivery guarantees
+- [trueseal-sync (Rust core)](https://github.com/julianbonomini/trueseal-sync) — source for the underlying crate
 - [trueseal-relay](https://github.com/julianbonomini/trueseal-relay) — deploying and self-hosting the relay
 - [Swift SDK reference](https://github.com/julianbonomini/trueseal-sync-swift) — full API docs (DocC)
 - [trueseal ecosystem](https://github.com/julianbonomini) — trueseal-noise, trueseal-protocol, trueseal-clip
