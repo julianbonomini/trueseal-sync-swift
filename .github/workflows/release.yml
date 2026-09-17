@@ -7,7 +7,7 @@ on:
       - 'v[0-9]*'
 
 env:
-  TRUESEAL_SYNC_TAG: v0.4.0
+  TRUESEAL_SYNC_TAG: v0.5.0
 
 permissions:
   contents: write

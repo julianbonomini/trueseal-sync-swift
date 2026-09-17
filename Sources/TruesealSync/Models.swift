@@ -14,6 +14,10 @@ public struct ReceivedBlob: Sendable {
     /// Stable per device — use as a sender identity token.
     public let senderPublicKey: Data
 
+    /// Stable opaque identifier for this message across relay re-delivery.
+    /// Persist it with application state and ignore an already-seen value.
+    public let messageId: String
+
     /// Convenience: interprets ``data`` as UTF-8 text.
     public var text: String? {
         String(data: data, encoding: .utf8)

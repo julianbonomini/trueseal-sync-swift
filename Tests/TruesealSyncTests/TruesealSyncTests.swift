@@ -47,13 +47,26 @@ final class TruesealSyncErrorTests: XCTestCase {
 final class ReceivedBlobTests: XCTestCase {
 
     func test_text_roundtrip() {
-        let blob = ReceivedBlob(data: Data("hello".utf8), senderPublicKey: Data(repeating: 0, count: 32))
+        let blob = ReceivedBlob(
+            data: Data("hello".utf8),
+            senderPublicKey: Data(repeating: 0, count: 32),
+            messageId: "tsm1_example"
+        )
         XCTAssertEqual(blob.text, "hello")
     }
 
     func test_text_nil_for_invalid_utf8() {
-        let blob = ReceivedBlob(data: Data([0xFF, 0xFE]), senderPublicKey: Data())
+        let blob = ReceivedBlob(
+            data: Data([0xFF, 0xFE]),
+            senderPublicKey: Data(),
+            messageId: "tsm1_example"
+        )
         XCTAssertNil(blob.text)
+    }
+
+    func test_messageId_isPreserved() {
+        let blob = ReceivedBlob(data: Data(), senderPublicKey: Data(), messageId: "tsm1_stable")
+        XCTAssertEqual(blob.messageId, "tsm1_stable")
     }
 }
 
