@@ -18,11 +18,11 @@ let package = Package(
         // always has the correct remote reference for SPM consumers.
         //
         // For local dev: run scripts/build-xcframework.sh, then change this to
-        //   path: "TruesealSyncFFI.xcframework"
+        //   url: "https://github.com/julianbonomini/trueseal-sync-swift/releases/download/v0.2.0/TruesealSyncFFI.xcframework.zip", checksum: "72792831db038c4e0bf9aa9a3eea0e0f8f9034d6d44512af3131560701142e5f"
         // Do not commit that local change.
         .binaryTarget(
             name: "TruesealSyncFFI",
-            path: "TruesealSyncFFI.xcframework"
+            url: "https://github.com/julianbonomini/trueseal-sync-swift/releases/download/v0.2.0/TruesealSyncFFI.xcframework.zip", checksum: "72792831db038c4e0bf9aa9a3eea0e0f8f9034d6d44512af3131560701142e5f"
         ),
 
         // ── 2. Generated UniFFI Swift bindings ────────────────────────────────
