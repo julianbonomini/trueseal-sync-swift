@@ -92,13 +92,16 @@ jobs:
             exit 1
           fi
 
-      # G8: no floating cross-repo inputs — no releases/latest, no :latest
-      # images, no sibling path references. Every cross-repo input to this
-      # repo is an exact tag + committed checksum (the core pin above, the
-      # vendored vectors and the vendored shared facts).
+      # G8: no floating cross-repo inputs — latest-style release refs,
+      # latest-tagged images and sibling path refs are forbidden. Every
+      # cross-repo input to this repo is an exact tag + committed checksum
+      # (the core pin above, the vendored vectors, the vendored shared facts).
       - name: No floating cross-repo inputs
         run: |
-          if grep -RnE 'releases/latest|:latest|path: "\.\./' .github/workflows/ Package.swift; then
+          # The pattern is assembled so this guard cannot match its own
+          # source lines (the literal never appears in the file).
+          L="la""test"
+          if grep -RnE "releases/$L|:$L|path: \"\.\./" .github/workflows/ Package.swift; then
             echo "::error::floating cross-repo input (G8) — pin an exact version + checksum"
             exit 1
           fi
