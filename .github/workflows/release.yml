@@ -20,16 +20,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Download prebuilt xcframework + UniFFI bindings from trueseal-sync release.
-      # Pin the version via the TRUESEAL_SYNC_TAG repo variable (Settings → Variables).
-      - name: Download trueseal-sync release artifacts
+      # Download the pinned core artifact (xcframework + UniFFI bindings).
+      # The bytes are the core release's trueseal-sync-swift-<tag>.zip,
+      # republished byte-exact under this repo's core-<tag> release so the
+      # default GITHUB_TOKEN suffices (the cross-repo TRUESEAL_READ_TOKEN
+      # PAT is expired). The expected sha256 below is the CORE release's
+      # published checksum — an exact version+checksum pin (G8).
+      - name: Download pinned core artifact
         env:
-          GH_TOKEN: ${{ secrets.TRUESEAL_READ_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CORE_TAG: core-${{ env.TRUESEAL_SYNC_TAG }}
         run: |
-          gh release download ${{ env.TRUESEAL_SYNC_TAG }} \
-            --repo ${{ github.repository_owner }}/trueseal-sync \
+          gh release download "$CORE_TAG" \
+            --repo ${{ github.repository }} \
             --pattern "trueseal-sync-swift-${{ env.TRUESEAL_SYNC_TAG }}.zip" \
             --output trueseal-sync-swift.zip
+
+      - name: Verify core artifact checksum
+        run: |
+          EXPECTED="${{ vars.CORE_SWIFT_ZIP_SHA256 || '61557fb4b084087ee6fbd757647c0cef604adb45144cc7a98e03c6d5ebf6c3c8' }}"
+          echo "$EXPECTED  trueseal-sync-swift.zip" | shasum -a 256 -c -
 
       - name: Extract xcframework and bindings
         run: |
