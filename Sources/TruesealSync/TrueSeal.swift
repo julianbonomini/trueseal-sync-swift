@@ -211,6 +211,11 @@ public final class TrueSeal {
 
     /// Opens the pairing window and returns the Pairing Token for the
     /// joiner (ADR-0023). Join requests arrive as `joinRequest` events.
+    /// The window stays open until you ``accept(requestId:)`` a request,
+    /// call ``cancelPairing()``, or the session restarts — there is no
+    /// timer and the token does not expire. Anyone who sees the token
+    /// while the window is open can request to join; treat it as secret
+    /// and close the window promptly.
     public func startPairing() throws -> String {
         do {
             let token = try core.startPairing()
