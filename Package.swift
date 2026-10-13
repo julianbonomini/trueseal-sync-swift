@@ -4,8 +4,8 @@ import PackageDescription
 let package = Package(
     name: "TruesealSync",
     platforms: [
-        .macOS(.v13),
-        .iOS(.v16),
+        .macOS(.v14),
+        .iOS(.v17),
     ],
     products: [
         // The only public-facing product.  App devs import TruesealSync — never TruesealSyncBindings.
@@ -13,16 +13,14 @@ let package = Package(
     ],
     targets: [
         // ── 1. Compiled Rust binary (XCFramework) ────────────────────────────
-        // path: is used for local development.  On every release the CI workflow
-        // stamps this to url:+checksum:, commits, and retagsso the published tag
-        // always has the correct remote reference for SPM consumers.
-        //
-        // For local dev: run scripts/build-xcframework.sh, then change this to
-        //   url: "https://github.com/julianbonomini/trueseal-sync-swift/releases/download/v0.2.0/TruesealSyncFFI.xcframework.zip", checksum: "72792831db038c4e0bf9aa9a3eea0e0f8f9034d6d44512af3131560701142e5f"
-        // Do not commit that local change.
+        // Source state uses path: — the XCFramework is produced locally by
+        // scripts/build-xcframework.sh, or extracted by CI from the pinned
+        // trueseal-sync core release (see .github/workflows/ci.yml).
+        // The release workflow stamps url:+checksum: on the tag for SPM
+        // consumers. Do not commit a url: form here.
         .binaryTarget(
             name: "TruesealSyncFFI",
-            url: "https://github.com/julianbonomini/trueseal-sync-swift/releases/download/v0.2.0/TruesealSyncFFI.xcframework.zip", checksum: "72792831db038c4e0bf9aa9a3eea0e0f8f9034d6d44512af3131560701142e5f"
+            path: "TruesealSyncFFI.xcframework"
         ),
 
         // ── 2. Generated UniFFI Swift bindings ────────────────────────────────
