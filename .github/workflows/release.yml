@@ -24,9 +24,30 @@ on:
         required: false
         type: boolean
         default: false
+      # Conductor override (e2e ADR-0002 step 4): the Release Conductor may
+      # build this SDK's candidate against a core CANDIDATE tag (staged by
+      # the core's candidate.yml and mirrored into this repo's core-<tag>
+      # release by scripts/mirror-core-artifact.sh) instead of the committed
+      # pin. Both fields must be given together; when omitted the committed
+      # env pin below is used. The checksum is still verified — an override
+      # changes WHICH pinned bytes, never WHETHER the bytes are pinned.
+      core_tag:
+        description: "Override core release tag (default: the committed pin)"
+        required: false
+        type: string
+        default: ""
+      core_zip_sha256:
+        description: "sha256 of the overridden core zip (required with core_tag)"
+        required: false
+        type: string
+        default: ""
 
 env:
+  # ── The core pin (G8) — see ci.yml for the full contract. An exact core
+  # release tag + the sha256 of the core release's PUBLISHED zip, COMMITTED
+  # here (a repo variable is mutable without review; it can never be the pin).
   TRUESEAL_SYNC_TAG: v0.6.0
+  TRUESEAL_SYNC_ZIP_SHA256: 61557fb4b084087ee6fbd757647c0cef604adb45144cc7a98e03c6d5ebf6c3c8
 
 permissions:
   contents: write
@@ -46,26 +67,46 @@ jobs:
           echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' \
             || { echo "::error::version must be X.Y.Z without a v prefix (got '$VERSION')"; exit 1; }
 
+      # The effective core pin: the conductor override when given, else the
+      # committed env constants. An override tag REQUIRES its own checksum.
+      - name: Resolve the effective core pin
+        env:
+          OVERRIDE_TAG: ${{ inputs.core_tag }}
+          OVERRIDE_SHA: ${{ inputs.core_zip_sha256 }}
+        run: |
+          if [ -n "$OVERRIDE_TAG" ]; then
+            [ -n "$OVERRIDE_SHA" ] || { echo "::error::core_tag requires core_zip_sha256 — an override is still an exact pin (G8)"; exit 1; }
+            echo "$OVERRIDE_SHA" | grep -qE '^[0-9a-f]{64}$' \
+              || { echo "::error::core_zip_sha256 must be 64 lowercase hex chars"; exit 1; }
+            echo "EFFECTIVE_CORE_TAG=$OVERRIDE_TAG" >> "$GITHUB_ENV"
+            echo "EFFECTIVE_CORE_SHA=$OVERRIDE_SHA" >> "$GITHUB_ENV"
+            echo "conductor override: core $OVERRIDE_TAG @ $OVERRIDE_SHA"
+          else
+            echo "EFFECTIVE_CORE_TAG=${{ env.TRUESEAL_SYNC_TAG }}" >> "$GITHUB_ENV"
+            echo "EFFECTIVE_CORE_SHA=${{ env.TRUESEAL_SYNC_ZIP_SHA256 }}" >> "$GITHUB_ENV"
+            echo "committed pin: core ${{ env.TRUESEAL_SYNC_TAG }}"
+          fi
+
       # Download the pinned core artifact (xcframework + UniFFI bindings).
       # The bytes are the core release's trueseal-sync-swift-<tag>.zip,
       # republished byte-exact under this repo's core-<tag> release so the
       # default GITHUB_TOKEN suffices (the cross-repo TRUESEAL_READ_TOKEN
-      # PAT is expired). The expected sha256 below is the CORE release's
-      # published checksum — an exact version+checksum pin (G8).
+      # PAT is expired — maintainer item A6; scripts/mirror-core-artifact.sh
+      # performs and verifies the mirror). The checksum verified below is the
+      # CORE release's published checksum — an exact version+checksum pin (G8).
       - name: Download pinned core artifact
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CORE_TAG: core-${{ env.TRUESEAL_SYNC_TAG }}
+          CORE_TAG: core-${{ env.EFFECTIVE_CORE_TAG }}
         run: |
           gh release download "$CORE_TAG" \
             --repo ${{ github.repository }} \
-            --pattern "trueseal-sync-swift-${{ env.TRUESEAL_SYNC_TAG }}.zip" \
+            --pattern "trueseal-sync-swift-${{ env.EFFECTIVE_CORE_TAG }}.zip" \
             --output trueseal-sync-swift.zip
 
       - name: Verify core artifact checksum
         run: |
-          EXPECTED="${{ vars.CORE_SWIFT_ZIP_SHA256 || '61557fb4b084087ee6fbd757647c0cef604adb45144cc7a98e03c6d5ebf6c3c8' }}"
-          echo "$EXPECTED  trueseal-sync-swift.zip" | shasum -a 256 -c -
+          echo "${{ env.EFFECTIVE_CORE_SHA }}  trueseal-sync-swift.zip" | shasum -a 256 -c -
 
       - name: Extract xcframework and bindings
         run: |
@@ -162,7 +203,7 @@ jobs:
           body: |
             Candidate for the TrueSeal ${{ inputs.version }} lockstep release.
 
-            - **core**: trueseal-sync ${{ env.TRUESEAL_SYNC_TAG }} (checksum-pinned)
+            - **core**: trueseal-sync ${{ env.EFFECTIVE_CORE_TAG }} (checksum-pinned)
             - **xcframework checksum**: ${{ steps.checksum.outputs.value }}
             - **release commit**: `release/v${{ inputs.version }}` (Package.swift stamped with the version/url/checksum constants)
 

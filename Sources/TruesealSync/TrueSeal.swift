@@ -186,6 +186,13 @@ public final class TrueSeal {
 
     /// Registers an event listener. Any number of listeners; events raised
     /// before the first registration are buffered (ADR-0028).
+    ///
+    /// Listeners must RETURN PROMPTLY: events and delivery issues are
+    /// delivered through one FFI listener bus, so a listener that parks
+    /// (a blocking wait, a synchronous call onto an occupied main actor)
+    /// wedges event delivery for the whole object — and a park outlasting
+    /// the core's liveness window (~75 s) tears the session down around it.
+    /// Hop to `MainActor` asynchronously; never block inside a listener.
     public nonisolated func onEvent(
         _ listener: @escaping @Sendable (TrueSealEvent) -> Void
     ) throws -> Subscription {
@@ -197,6 +204,8 @@ public final class TrueSeal {
     }
 
     /// Registers a delivery-issue listener (optional; ADR-0026).
+    /// The same prompt-return rule as ``onEvent(listener:)`` applies —
+    /// events and issues share the one listener bus.
     public nonisolated func onDeliveryIssue(
         _ listener: @escaping @Sendable (DeliveryIssue) -> Void
     ) throws -> Subscription {
