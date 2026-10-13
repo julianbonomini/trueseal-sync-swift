@@ -96,7 +96,7 @@ let sub = ts.onMessage { message in
 }
 ```
 
-Delivery is at least once, in per-sender order. The message is acked only after your handler completes — a throw retries (5 attempts, then a `handlerGaveUp` delivery issue). The library deduplicates on `message.id`; a handler never sees the same message twice.
+Delivery is at least once, in per-sender order. The message is acked only after your handler completes — a throw retries (5 attempts, then a `handlerGaveUp` delivery issue). The library deduplicates on `message.id`; a handler never sees the same message twice. The handler runs off the main actor — don't block the main actor inside it (hop to `MainActor` explicitly for UI work); a blocked main actor stalls delivery, and the relay can see handler latency.
 
 ---
 

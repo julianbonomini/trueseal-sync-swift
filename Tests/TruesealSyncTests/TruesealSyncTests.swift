@@ -153,7 +153,7 @@ final class TrueSealApiTests: XCTestCase {
     }
 
     @MainActor
-    func test_doubleJoinThrowsAlreadyInGroup_andCancelJoinRoundTrips() async throws {
+    func test_rejoinWhilePendingJoinReplacesAnchor_andCancelJoinRoundTrips() async throws {
         let admitter = try await openSession(namespace: "a")
         let token = try admitter.startPairing()
         XCTAssertFalse(token.isEmpty)
@@ -261,6 +261,42 @@ final class TrueSealApiTests: XCTestCase {
     }
 
     // MARK: - Events against a live local relay (skip-gated)
+
+    /// SWIFT-1 (#7) regression guard: a Relay Address with NON-DEFAULT
+    /// receive and push ports must dial exactly those ports. The joiner's
+    /// Pair travels out through the PUSH port (?push=) and the admitter's
+    /// joinRequest event arrives through the RECEIVE port — one scenario
+    /// proving both. The pre-canonical client hard-coded 7700/7701 and
+    /// silently dropped the port; under that defect this test can only
+    /// time out. (The red half of this regression is pre-D1 history: the
+    /// defective API was deleted in PR #10, so the guard is green-only.)
+    @MainActor
+    func test_relayAddress_customPortsAreDialed_againstLiveRelay() async throws {
+        let relay = try RelayFixture.start()
+        defer { relay.stop() }
+
+        let addr = try TrueSeal.parseRelayAddress(relay.address)
+        XCTAssertNotEqual(addr.receivePort, 7700, "fixture must not use the default receive port")
+        XCTAssertNotEqual(addr.pushPort, 7701, "fixture must not use the default push port")
+        XCTAssertNotEqual(addr.receivePort, addr.pushPort, "receive and push must be distinct ports")
+
+        let admitter = try await TrueSeal.open(relay: addr, storage: makeStorage(), namespace: "sw1-a")
+        let joinRequest = expectation(description: "admitter sees joinRequest (push port + receive port both dialed)")
+        joinRequest.assertForOverFulfill = false
+        let sub = try admitter.onEvent { event in
+            if case .joinRequest = event { joinRequest.fulfill() }
+        }
+        let token = try admitter.startPairing()
+
+        let joiner = try await TrueSeal.open(relay: addr, storage: makeStorage(), namespace: "sw1-b")
+        try joiner.join(token: token)
+        XCTAssertEqual(joiner.status, .pendingJoin)
+
+        await fulfillment(of: [joinRequest], timeout: 20)
+        sub.cancel()
+        admitter.close()
+        joiner.close()
+    }
 
     @MainActor
     func test_onEvent_connectionTransitions_againstLiveRelay() async throws {
