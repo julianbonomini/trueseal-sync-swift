@@ -464,14 +464,13 @@ final class RelayFixture {
 
     @MainActor
     static func start() throws -> RelayFixture {
-        struct Skip: Error {}
         let sibling = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent() // TruesealSyncTests
             .deletingLastPathComponent() // Tests
             .deletingLastPathComponent() // repo root
             .deletingLastPathComponent() // workspace
             .appendingPathComponent("trueseal-relay")
-        guard FileManager.default.fileExists(atPath: sibling.path) else { throw Skip() }
+        guard FileManager.default.fileExists(atPath: sibling.path) else { throw XCTSkip("no sibling trueseal-relay checkout") }
 
         let bin = "/tmp/trueseal-relay-test-bin"
         if !FileManager.default.fileExists(atPath: bin) {
@@ -481,7 +480,7 @@ final class RelayFixture {
             build.currentDirectoryURL = sibling
             try build.run()
             build.waitUntilExit()
-            guard build.terminationStatus == 0 else { throw Skip() }
+            guard build.terminationStatus == 0 else { throw XCTSkip("go toolchain unavailable") }
         }
 
         let port = 18_000 + Int.random(in: 0..<2_000) * 3
@@ -515,7 +514,7 @@ final class RelayFixture {
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard key.count == 64 else {
             relay.terminate()
-            throw Skip()
+            throw XCTSkip("relay did not start")
         }
         // Give the listeners a beat to bind.
         Thread.sleep(forTimeInterval: 0.5)
