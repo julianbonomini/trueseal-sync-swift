@@ -1,125 +1,52 @@
-// Internal callback bridge objects.
-//
-// Each class implements one of the UniFFI callback interface protocols from
-// TruesealSyncBindings and feeds events into an AsyncStream continuation.
-// None of these types are public — they live entirely behind the
-// @_implementationOnly import boundary.
-
-@_implementationOnly import TruesealSyncBindings
 import Foundation
+@_implementationOnly @preconcurrency import TruesealSyncBindings
 
-// MARK: - Blob
+// Adapters from the core's UniFFI listener/handler protocols to Swift
+// closures. The public API never exposes the FFI protocols.
 
-final class BlobCallbackHandler: MessageCallback {
-    private let continuation: AsyncStream<ReceivedBlob>.Continuation
+/// Bridges the awaited message handler (ADR-0026). A throw from the app
+/// closure becomes `HandlerError.Failed`, which the core turns into a
+/// handler attempt (5 tries with backoff, then `handlerGaveUp`).
+final class MessageHandlerBridge: TruesealSyncBindings.TrueSealMessageHandler, @unchecked Sendable {
+    private let handler: @Sendable (TrueSealMessage) async throws -> Void
 
-    init(continuation: AsyncStream<ReceivedBlob>.Continuation) {
-        self.continuation = continuation
+    init(_ handler: @escaping @Sendable (TrueSealMessage) async throws -> Void) {
+        self.handler = handler
     }
 
-    func onMessage(blob: Data, senderNoisePub: Data, messageId: String) {
-        continuation.yield(
-            ReceivedBlob(data: blob, senderPublicKey: senderNoisePub, messageId: messageId)
-        )
-    }
-}
-
-// MARK: - Removed from group
-
-final class MemberRemovedCallbackHandler: RemovedFromGroupCallback {
-    private let continuation: AsyncStream<MemberEvent>.Continuation
-
-    init(continuation: AsyncStream<MemberEvent>.Continuation) {
-        self.continuation = continuation
-    }
-
-    func onRemovedFromGroup() {
-        continuation.yield(.removedSelf)
+    func onMessage(message: TruesealSyncBindings.TrueSealMessage) async throws {
+        do {
+            try await handler(TrueSealMessage(message))
+        } catch {
+            throw TruesealSyncBindings.HandlerError.Failed(msg: String(describing: error))
+        }
     }
 }
 
-// MARK: - Group destroyed
+/// Bridges an event listener. Events are delivered synchronously from the
+/// core; listeners must not block (the core's dispatch thread delivers
+/// in order).
+final class EventListenerBridge: TruesealSyncBindings.TrueSealEventListener, @unchecked Sendable {
+    private let listener: @Sendable (TrueSealEvent) -> Void
 
-/// Finishes ALL four streams when the group is destroyed so that callers
-/// iterating `blobs`, `pairingRequests`, or `connectionState` are not left
-/// hanging in a `for await` loop forever.
-final class GroupDestroyedCallbackHandler: GroupDestroyedCallback {
-    private let memberContinuation: AsyncStream<MemberEvent>.Continuation
-    private let blobContinuation: AsyncStream<ReceivedBlob>.Continuation
-    private let pairingContinuation: AsyncStream<PairingRequest>.Continuation
-    private let connectionContinuation: AsyncStream<ConnectionState>.Continuation
-
-    init(
-        memberContinuation: AsyncStream<MemberEvent>.Continuation,
-        blobContinuation: AsyncStream<ReceivedBlob>.Continuation,
-        pairingContinuation: AsyncStream<PairingRequest>.Continuation,
-        connectionContinuation: AsyncStream<ConnectionState>.Continuation
-    ) {
-        self.memberContinuation = memberContinuation
-        self.blobContinuation = blobContinuation
-        self.pairingContinuation = pairingContinuation
-        self.connectionContinuation = connectionContinuation
+    init(_ listener: @escaping @Sendable (TrueSealEvent) -> Void) {
+        self.listener = listener
     }
 
-    func onGroupDestroyed() {
-        memberContinuation.yield(.groupDestroyed)
-        memberContinuation.finish()
-        blobContinuation.finish()
-        pairingContinuation.finish()
-        connectionContinuation.finish()
+    func onEvent(event: TruesealSyncBindings.TrueSealEvent) {
+        listener(TrueSealEvent(event))
     }
 }
 
-// MARK: - Pairing request
+/// Bridges a delivery-issue listener (ADR-0026, optional stream).
+final class IssueListenerBridge: TruesealSyncBindings.TrueSealIssueListener, @unchecked Sendable {
+    private let listener: @Sendable (DeliveryIssue) -> Void
 
-final class PairingRequestCallbackHandler: MemberRequestCallback {
-    private let continuation: AsyncStream<PairingRequest>.Continuation
-
-    init(continuation: AsyncStream<PairingRequest>.Continuation) {
-        self.continuation = continuation
+    init(_ listener: @escaping @Sendable (DeliveryIssue) -> Void) {
+        self.listener = listener
     }
 
-    func onMemberRequest(token: String, name: String) {
-        continuation.yield(PairingRequest(token: token, deviceName: name))
-    }
-}
-
-// MARK: - Member joined / left
-
-final class MemberJoinedCallbackHandler: MemberJoinedCallback {
-    private let continuation: AsyncStream<MemberEvent>.Continuation
-
-    init(continuation: AsyncStream<MemberEvent>.Continuation) {
-        self.continuation = continuation
-    }
-
-    func onMemberJoined(memberId: String, memberName: String) {
-        continuation.yield(.joined(SyncMember(id: memberId, name: memberName)))
-    }
-}
-
-final class MemberLeftCallbackHandler: MemberLeftCallback {
-    private let continuation: AsyncStream<MemberEvent>.Continuation
-
-    init(continuation: AsyncStream<MemberEvent>.Continuation) {
-        self.continuation = continuation
-    }
-
-    func onMemberLeft(memberId: String, memberName: String) {
-        continuation.yield(.left(SyncMember(id: memberId, name: memberName)))
-    }
-}
-
-// MARK: - Connection changed
-
-final class ConnectionChangedCallbackHandler: ConnectionChangedCallback {
-    private let continuation: AsyncStream<ConnectionState>.Continuation
-
-    init(continuation: AsyncStream<ConnectionState>.Continuation) {
-        self.continuation = continuation
-    }
-
-    func onConnectionChanged(connected: Bool) {
-        continuation.yield(connected ? .connected : .disconnected)
+    func onDeliveryIssue(issue: TruesealSyncBindings.DeliveryIssue) {
+        listener(DeliveryIssue(issue))
     }
 }
