@@ -34,7 +34,8 @@ public enum TrueSealError: Error, Equatable, Sendable {
     /// spent (ADR-0023).
     case invalidPairingToken
 
-    /// The pairing window is not open (already closed, cancelled or expired).
+    /// The pairing window is not open (already accepted, cancelled or
+    /// closed — there is no timer; ADR-0023).
     case pairingClosed
 
     /// The group is at the Maximum Group Size (ADR-0027).
