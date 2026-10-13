@@ -7,7 +7,20 @@ on:
     branches: [main]
 
 env:
+  # ── The core pin (G8) ────────────────────────────────────────────────────
+  # An exact core release tag + the sha256 of the core release's PUBLISHED
+  # trueseal-sync-swift-<tag>.zip. Both are COMMITTED here — a repo variable
+  # or secret is mutable without review, so it can never be the pin. The
+  # download itself goes through this repo's byte-exact `core-<tag>` mirror
+  # release (the cross-repo TRUESEAL_READ_TOKEN PAT is expired — maintainer
+  # item A6); scripts/mirror-core-artifact.sh performs and verifies the
+  # mirror, and CONTRIBUTING.md documents the one-line flip back to a direct
+  # cross-repo download once the token is refreshed.
   TRUESEAL_SYNC_TAG: v0.6.0
+  TRUESEAL_SYNC_ZIP_SHA256: 61557fb4b084087ee6fbd757647c0cef604adb45144cc7a98e03c6d5ebf6c3c8
+  # The vendored G12 canonical facts (Parity/shared-facts.json — refresh
+  # procedure in Parity/README.md).
+  SHARED_FACTS_SHA256: 159491b8a563c6928d564458c898e2c5e815e3e291091bc7e6342624031fe62a
 
 jobs:
   ci:
@@ -34,8 +47,9 @@ jobs:
             --output trueseal-sync-swift.zip
 
       - name: Verify core artifact checksum
+        env:
+          EXPECTED: ${{ env.TRUESEAL_SYNC_ZIP_SHA256 }}
         run: |
-          EXPECTED="${{ vars.CORE_SWIFT_ZIP_SHA256 || '61557fb4b084087ee6fbd757647c0cef604adb45144cc7a98e03c6d5ebf6c3c8' }}"
           echo "$EXPECTED  trueseal-sync-swift.zip" | shasum -a 256 -c -
 
       - name: Extract xcframework and bindings
@@ -77,6 +91,39 @@ jobs:
             echo "::error::hand-written version/limit literal in SDK sources — values must come from the core's FFI statics (SDK-3)"
             exit 1
           fi
+
+      # G8: no floating cross-repo inputs — no releases/latest, no :latest
+      # images, no sibling path references. Every cross-repo input to this
+      # repo is an exact tag + committed checksum (the core pin above, the
+      # vendored vectors and the vendored shared facts).
+      - name: No floating cross-repo inputs
+        run: |
+          if grep -RnE 'releases/latest|:latest|path: "\.\./' .github/workflows/ Package.swift; then
+            echo "::error::floating cross-repo input (G8) — pin an exact version + checksum"
+            exit 1
+          fi
+
+      # G12 parity: the Swift SDK's public case names vs the core's canonical
+      # Shared Facts — fails on ANY drift (renamed, missing, extra case), and
+      # --self-test proves the check itself can fail (the negative test).
+      - name: Verify the vendored Shared Facts bytes
+        run: |
+          echo "${{ env.SHARED_FACTS_SHA256 }}  Parity/shared-facts.json" | shasum -a 256 -c -
+
+      - name: G12 parity check
+        run: python3 scripts/check-parity.py --report "${{ runner.temp }}/g12-parity-report.json"
+
+      - name: G12 parity check — negative self-test
+        run: python3 scripts/check-parity.py --self-test
+
+      # G12 evidence for the Release Conductor, kept even on a red run.
+      - name: Upload G12 parity report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trueseal-g12-parity-report
+          path: ${{ runner.temp }}/g12-parity-report.json
+          if-no-files-found: warn
 
       # SWIFT-2: main is always source state — the release pin constants must
       # be present and artifactURL EMPTY (a stamped url: form on main means a
