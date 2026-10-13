@@ -12,9 +12,11 @@ import Observation
 /// ``TrueSealError/closed``.
 ///
 /// State (`status`, `me`, `members`, `connection`) is `@Observable` and
-/// main-actor isolated for SwiftUI. Operations are `nonisolated` — the
-/// core handle is thread-safe, so `send` and friends never block the
-/// main actor.
+/// main-actor isolated for SwiftUI. Pairing and membership operations
+/// run on the main actor and refresh state immediately (synchronous
+/// transitions raise no event, ADR-0028); `send` and the `on…`
+/// registrations are `nonisolated` — the core handle is thread-safe, so
+/// the hot path never blocks the main actor.
 @MainActor @Observable
 public final class TrueSeal {
 
@@ -56,6 +58,18 @@ public final class TrueSeal {
             }
         }
         self.stateSubscription = try core.onEvent(listener: bridge)
+    }
+
+    /// Re-reads state from the core. Called after synchronous transitions
+    /// (join → pendingJoin, leave → leaving, destroyGroup → destroying,
+    /// cancelJoin → notJoined) raise NO event by design (ADR-0028
+    /// statusChanged mapping) — without this the observable state would
+    /// lag the call the app just made.
+    private func refreshState() {
+        if let s = try? core.status() { status = GroupStatus(s) }
+        if let m = try? core.me() { me = Member(m) }
+        members = ((try? core.members()) ?? []).map(Member.init)
+        if let c = try? core.connection() { connection = ConnectionState(c) }
     }
 
     private func applyStateChange(_ event: TrueSealEvent) {
@@ -197,9 +211,11 @@ public final class TrueSeal {
 
     /// Opens the pairing window and returns the Pairing Token for the
     /// joiner (ADR-0023). Join requests arrive as `joinRequest` events.
-    public nonisolated func startPairing() throws -> String {
+    public func startPairing() throws -> String {
         do {
-            return try core.startPairing()
+            let token = try core.startPairing()
+            refreshState()
+            return token
         } catch let error as TruesealSyncBindings.TrueSealError {
             throw TrueSealError.map(error)
         }
@@ -209,18 +225,20 @@ public final class TrueSeal {
     /// ``TrueSealError/groupFull(max:)`` or
     /// ``TrueSealError/manifestVersionExhausted``. There is no reject —
     /// the protocol sends no decline (ADR-0023).
-    public nonisolated func accept(requestId: String) throws {
+    public func accept(requestId: String) throws {
         do {
             try core.accept(requestId: requestId)
+            refreshState()
         } catch let error as TruesealSyncBindings.TrueSealError {
             throw TrueSealError.map(error)
         }
     }
 
     /// Closes the pairing window. Unaccepted requests disappear with it.
-    public nonisolated func cancelPairing() throws {
+    public func cancelPairing() throws {
         do {
             try core.cancelPairing()
+            refreshState()
         } catch let error as TruesealSyncBindings.TrueSealError {
             throw TrueSealError.map(error)
         }
@@ -230,18 +248,20 @@ public final class TrueSeal {
 
     /// Joins the group named by the Pairing Token, moving this device to
     /// `pendingJoin` until the first manifest arrives (ADR-0023).
-    public nonisolated func join(token: String) throws {
+    public func join(token: String) throws {
         do {
             try core.join(token: token)
+            refreshState()
         } catch let error as TruesealSyncBindings.TrueSealError {
             throw TrueSealError.map(error)
         }
     }
 
     /// Abandons a pending join, back to `notJoined`.
-    public nonisolated func cancelJoin() throws {
+    public func cancelJoin() throws {
         do {
             try core.cancelJoin()
+            refreshState()
         } catch let error as TruesealSyncBindings.TrueSealError {
             throw TrueSealError.map(error)
         }
@@ -251,9 +271,10 @@ public final class TrueSeal {
 
     /// Removes a member by id (any member may remove; ADR-0027). The
     /// removed device wipes and rotates automatically.
-    public nonisolated func remove(memberId: String) throws {
+    public func remove(memberId: String) throws {
         do {
             try core.remove(memberId: memberId)
+            refreshState()
         } catch let error as TruesealSyncBindings.TrueSealError {
             throw TrueSealError.map(error)
         }
@@ -261,9 +282,10 @@ public final class TrueSeal {
 
     /// Leaves the group: `leaving` now, `notJoined` with reason `left`
     /// once the relay has accepted the Leave (ADR-0027).
-    public nonisolated func leave() throws {
+    public func leave() throws {
         do {
             try core.leave()
+            refreshState()
         } catch let error as TruesealSyncBindings.TrueSealError {
             throw TrueSealError.map(error)
         }
@@ -271,9 +293,10 @@ public final class TrueSeal {
 
     /// Destroys the group for every current member (ADR-0029). Durable and
     /// forwarded; honoured from any past or present member.
-    public nonisolated func destroyGroup() throws {
+    public func destroyGroup() throws {
         do {
             try core.destroyGroup()
+            refreshState()
         } catch let error as TruesealSyncBindings.TrueSealError {
             throw TrueSealError.map(error)
         }
