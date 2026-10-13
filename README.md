@@ -4,7 +4,7 @@ Swift SDK for [trueseal-sync](https://github.com/julianbonomini/trueseal-sync) �
 
 Wraps the Rust core via UniFFI. The public surface is pure Swift — no FFI types, no Noise Protocol, no raw pointers.
 
-**Platforms:** macOS 13+ · iOS 16+ · Swift 5.9+ / Xcode 15+
+**Platforms:** macOS 14+ · iOS 17+ · Swift 5.9+ / Xcode 15+
 
 ---
 
@@ -28,28 +28,17 @@ You need a relay — a server that routes encrypted blobs between devices. The r
 ```swift
 import TruesealSync
 
-let client = try TruesealSyncClient(
-    relayURL: URL(string: "tcp://relay.example.com")!,
-    relayPublicKey: hexToData("your64charhexstring")  // 32-byte X25519 key
+let ts = try await TrueSeal.open(
+    relay: "trueseal://<relay public key hex>@relay.example.com",
+    storage: try FileManager.default.url(
+        for: .applicationSupportDirectory, in: .userDomainMask,
+        appropriateFor: nil, create: true)
 )
 ```
 
-The relay's public key is a build-time constant. Get it from your relay operator, or run `trueseal-relay --print-pubkey` if self-hosting. To decode a hex string:
+One Relay Address string carries the key, host and both ports — the relay CLI prints it (`trueseal-relay address --host relay.example.com`). Session State lives under `storage` (excluded from backups; protected by the OS sandbox). `open` returns before the connection is up — the outbox queues and replays once the relay is reachable.
 
-```swift
-func hexToData(_ hex: String) -> Data {
-    var data = Data()
-    var i = hex.startIndex
-    while i < hex.endIndex {
-        let j = hex.index(i, offsetBy: 2)
-        data.append(UInt8(hex[i..<j], radix: 16)!)
-        i = j
-    }
-    return data
-}
-```
-
-The client connects to the relay in the background. It's usable immediately — the outbox queues blobs and replays them once the relay is reachable.
+State is `@Observable` for SwiftUI: `ts.status`, `ts.me`, `ts.members`, `ts.connection`.
 
 > **Required entitlement.** Without this, the relay connection silently fails:
 > ```xml
@@ -63,93 +52,88 @@ The client connects to the relay in the background. It's usable immediately — 
 
 ### Pair two devices
 
-Devices sync within a *Sync Group* — a set of mutually-trusted devices. You bootstrap the group by pairing. One device generates a token; the other scans it; the first accepts.
+Devices sync within a group — a set of mutually-trusted devices. You bootstrap the group by pairing. One device opens a window and hands over a token; the other joins with it; the first accepts.
 
-**Device A** — open a 60-second pairing window and get a token (show it as a QR code, send via AirDrop, etc.):
+**Device A** — open the pairing window and get a token (show it as a QR code, send via AirDrop, etc.):
 
 ```swift
-let token = clientA.generatePairingToken()
+let token = try tsA.startPairing()
 ```
 
-**Device B** — submit the token:
+**Device B** — join with the token (status becomes `pendingJoin` until the first manifest arrives):
 
 ```swift
-try clientB.joinGroup(token: token)
+try tsB.join(token: token)
 ```
 
-**Device A** — a pairing request arrives; accept it to finalise membership:
+**Device A** — the request arrives as an event; accept it:
 
 ```swift
-for await request in clientA.pairingRequests {
-    print("Request from: \(request.deviceName)")
-    clientA.acceptPairingRequest(request)
-    break  // token is single-use
+let sub = tsA.onEvent { event in
+    if case .joinRequest(let request) = event {
+        print("Request from: \(request.name)")
+        try? tsA.accept(requestId: request.id)
+    }
 }
 ```
 
-After `acceptPairingRequest`, both devices are full members and can send and receive.
+After `accept`, both devices are members and can send and receive.
 
 ---
 
 ### Send & receive
 
 ```swift
-// Send — throws .notInGroup until pairing is complete
-try await client.publish(text: "hello")
-try await client.publish(someData)
+// Send — returns the Message ID once durably queued (fails typed while
+// not a member, or over the 61,440-byte limit)
+let messageId = try ts.send(Data("hello".utf8))
 
-// Receive
-Task {
-    for await blob in client.blobs {
-        print(blob.text ?? "<binary>")         // convenience UTF-8 decode
-        print(blob.senderPublicKey.count)      // 32 — stable identity per device
-        print(blob.messageId)                  // stable across re-delivery
-    }
+// Receive — one awaited handler per object; registering it starts receiving
+let sub = ts.onMessage { message in
+    print(String(data: message.body, encoding: .utf8) ?? "<binary>")
+    print(message.from.name)   // sender, same id as in ts.members
+    print(message.id)          // stable tsm1_… id; the library deduplicates
 }
 ```
 
-Delivery is at least once. Persist `blob.messageId` in the same transaction as your application update. Ignore the blob when that opaque ID already exists.
+Delivery is at least once, in per-sender order. The message is acked only after your handler completes — a throw retries (5 attempts, then a `handlerGaveUp` delivery issue). The library deduplicates on `message.id`; a handler never sees the same message twice.
 
 ---
 
 ### Membership events
 
 ```swift
-Task {
-    for await event in client.memberEvents {
-        switch event {
-        case .joined(let m):   // new device admitted
-        case .left(let m):     // device removed by another member
-        case .removedSelf:     // this device was removed
-        case .groupDestroyed:  // session is terminal — all streams complete here
-        }
+let sub = ts.onEvent { event in
+    switch event {
+    case .statusChanged(let status, let reason):
+        break // member/created, notJoined/left|removed|destroyed|storeReset …
+    case .membersChanged(let members):
+        break // the whole current list, not deltas
+    case .joinRequest, .connectionChanged, .admissionDropped:
+        break
     }
 }
 ```
 
-To remove a member (soft removal, no key rotation):
+To remove a member (they wipe and rotate automatically):
 
 ```swift
-try client.removeMember(client.members[0])
+try ts.remove(memberId: ts.members[0].id)
 ```
 
-To cryptographically exclude a compromised device, use `destroyGroup()` instead. Every member receives `.groupDestroyed`, all streams complete, and devices rotate keypairs on the next init.
+`ts.leave()` leaves; `ts.destroyGroup()` destroys the group for everyone (durable, forwarded, honoured from any past or present member). In every case the same object reaches `notJoined` and can pair again — no rebuilding.
+
+`ts.close()` stops the connection and handlers, keeping Session State; every later call fails with `TrueSealError.closed`.
 
 ---
 
 ## Errors
 
-All errors are `TruesealSyncError`, conforming to `LocalizedError`.
+Exactly 14 cases, one `TrueSealError` enum, no catch-all — the same list in every SDK (sync ADR-0028 as amended):
 
-| Case | When |
-|------|------|
-| `.notInGroup` | Published before pairing completed |
-| `.invalidPairingToken` | Token malformed or window expired |
-| `.groupDestroyed` | Session terminal — reconstruct the client |
-| `.pushFailed(msg)` | Informational; blob is already queued in the outbox |
-| `.memberNotFound` | ID not in the current Group Manifest |
-| `.invalidRelayPublicKey` | Key not exactly 32 bytes |
-| `.invalidRelayURL` | URL missing a host component |
+`invalidRelayAddress` · `invalidNamespace` · `storage` · `closed` · `notMember(status)` · `alreadyInGroup` · `invalidPairingToken` · `pairingClosed` · `groupFull(max)` · `memberNotFound` · `payloadTooLarge(max)` · `messageHandlerAlreadySet` · `storeTooNew(found, supported)` · `manifestVersionExhausted`
+
+Delivery problems that don't throw arrive on the optional `onDeliveryIssue` stream: `unreadable(reason)`, `unauthorized`, `heldForUpgrade(version)`, `handlerGaveUp(messageId, error)`, `sendFailed(messageId, reason)`.
 
 ---
 
@@ -159,7 +143,7 @@ All errors are `TruesealSyncError`, conforming to `LocalizedError`.
 Your App
    │  import TruesealSync
    ▼
-TruesealSyncClient          ← idiomatic Swift (this SDK)
+TrueSeal                    ← idiomatic Swift (this SDK)
    │  @_implementationOnly import TruesealSyncBindings
    ▼
 TruesealSyncBindings        ← UniFFI-generated Swift (internal)
@@ -193,11 +177,7 @@ rustup target add \
 bash scripts/build-xcframework.sh
 ```
 
-Then point `Package.swift` at the local framework:
-
-```swift
-.binaryTarget(name: "TruesealSyncFFI", path: "TruesealSyncFFI.xcframework")
-```
+The committed `Package.swift` already points at the local path; the release workflow stamps `url:`+`checksum:` on each tag for SPM consumers.
 
 Don't commit that — the published `Package.swift` uses `url:+checksum:` so SPM resolves correctly for remote consumers.
 
