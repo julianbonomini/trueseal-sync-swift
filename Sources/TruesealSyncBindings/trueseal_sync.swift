@@ -8,11 +8,11 @@ import Foundation
 // might be in a separate module, or it might be compiled inline into
 // this module. This is a bit of light hackery to work with both.
 #if canImport(trueseal_syncFFI)
-import trueseal_syncFFI
+    import trueseal_syncFFI
 #endif
 
-fileprivate extension RustBuffer {
-    // Allocate a new buffer, copying the contents of a `UInt8` array.
+private extension RustBuffer {
+    /// Allocate a new buffer, copying the contents of a `UInt8` array.
     init(bytes: [UInt8]) {
         let rbuf = bytes.withUnsafeBufferPointer { ptr in
             RustBuffer.from(ptr)
@@ -21,21 +21,21 @@ fileprivate extension RustBuffer {
     }
 
     static func empty() -> RustBuffer {
-        RustBuffer(capacity: 0, len:0, data: nil)
+        RustBuffer(capacity: 0, len: 0, data: nil)
     }
 
     static func from(_ ptr: UnsafeBufferPointer<UInt8>) -> RustBuffer {
         try! rustCall { ffi_trueseal_sync_rustbuffer_from_bytes(ForeignBytes(bufferPointer: ptr), $0) }
     }
 
-    // Frees the buffer in place.
-    // The buffer must not be used after this is called.
+    /// Frees the buffer in place.
+    /// The buffer must not be used after this is called.
     func deallocate() {
         try! rustCall { ffi_trueseal_sync_rustbuffer_free(self, $0) }
     }
 }
 
-fileprivate extension ForeignBytes {
+private extension ForeignBytes {
     init(bufferPointer: UnsafeBufferPointer<UInt8>) {
         self.init(len: Int32(bufferPointer.count), data: bufferPointer.baseAddress)
     }
@@ -48,7 +48,7 @@ fileprivate extension ForeignBytes {
 // Helper classes/extensions that don't change.
 // Someday, this will be in a library of its own.
 
-fileprivate extension Data {
+private extension Data {
     init(rustBuffer: RustBuffer) {
         self.init(
             bytesNoCopy: rustBuffer.data!,
@@ -72,15 +72,15 @@ fileprivate extension Data {
 //
 // Instead, the read() method and these helper functions input a tuple of data
 
-fileprivate func createReader(data: Data) -> (data: Data, offset: Data.Index) {
+private func createReader(data: Data) -> (data: Data, offset: Data.Index) {
     (data: data, offset: 0)
 }
 
-// Reads an integer at the current offset, in big-endian order, and advances
-// the offset on success. Throws if reading the integer would move the
-// offset past the end of the buffer.
-fileprivate func readInt<T: FixedWidthInteger>(_ reader: inout (data: Data, offset: Data.Index)) throws -> T {
-    let range = reader.offset..<reader.offset + MemoryLayout<T>.size
+/// Reads an integer at the current offset, in big-endian order, and advances
+/// the offset on success. Throws if reading the integer would move the
+/// offset past the end of the buffer.
+private func readInt<T: FixedWidthInteger>(_ reader: inout (data: Data, offset: Data.Index)) throws -> T {
+    let range = reader.offset ..< reader.offset + MemoryLayout<T>.size
     guard reader.data.count >= range.upperBound else {
         throw UniffiInternalError.bufferOverflow
     }
@@ -90,38 +90,38 @@ fileprivate func readInt<T: FixedWidthInteger>(_ reader: inout (data: Data, offs
         return value as! T
     }
     var value: T = 0
-    let _ = withUnsafeMutableBytes(of: &value, { reader.data.copyBytes(to: $0, from: range)})
+    let _ = withUnsafeMutableBytes(of: &value) { reader.data.copyBytes(to: $0, from: range) }
     reader.offset = range.upperBound
     return value.bigEndian
 }
 
-// Reads an arbitrary number of bytes, to be used to read
-// raw bytes, this is useful when lifting strings
-fileprivate func readBytes(_ reader: inout (data: Data, offset: Data.Index), count: Int) throws -> Array<UInt8> {
-    let range = reader.offset..<(reader.offset+count)
+/// Reads an arbitrary number of bytes, to be used to read
+/// raw bytes, this is useful when lifting strings
+private func readBytes(_ reader: inout (data: Data, offset: Data.Index), count: Int) throws -> [UInt8] {
+    let range = reader.offset ..< (reader.offset + count)
     guard reader.data.count >= range.upperBound else {
         throw UniffiInternalError.bufferOverflow
     }
     var value = [UInt8](repeating: 0, count: count)
-    value.withUnsafeMutableBufferPointer({ buffer in
+    value.withUnsafeMutableBufferPointer { buffer in
         reader.data.copyBytes(to: buffer, from: range)
-    })
+    }
     reader.offset = range.upperBound
     return value
 }
 
-// Reads a float at the current offset.
-fileprivate func readFloat(_ reader: inout (data: Data, offset: Data.Index)) throws -> Float {
-    return Float(bitPattern: try readInt(&reader))
+/// Reads a float at the current offset.
+private func readFloat(_ reader: inout (data: Data, offset: Data.Index)) throws -> Float {
+    return try Float(bitPattern: readInt(&reader))
 }
 
-// Reads a float at the current offset.
-fileprivate func readDouble(_ reader: inout (data: Data, offset: Data.Index)) throws -> Double {
-    return Double(bitPattern: try readInt(&reader))
+/// Reads a float at the current offset.
+private func readDouble(_ reader: inout (data: Data, offset: Data.Index)) throws -> Double {
+    return try Double(bitPattern: readInt(&reader))
 }
 
-// Indicates if the offset has reached the end of the buffer.
-fileprivate func hasRemaining(_ reader: (data: Data, offset: Data.Index)) -> Bool {
+/// Indicates if the offset has reached the end of the buffer.
+private func hasRemaining(_ reader: (data: Data, offset: Data.Index)) -> Bool {
     return reader.offset < reader.data.count
 }
 
@@ -129,34 +129,34 @@ fileprivate func hasRemaining(_ reader: (data: Data, offset: Data.Index)) -> Boo
 // struct, but we use standalone functions instead in order to make external
 // types work.  See the above discussion on Readers for details.
 
-fileprivate func createWriter() -> [UInt8] {
+private func createWriter() -> [UInt8] {
     return []
 }
 
-fileprivate func writeBytes<S>(_ writer: inout [UInt8], _ byteArr: S) where S: Sequence, S.Element == UInt8 {
+private func writeBytes<S: Sequence>(_ writer: inout [UInt8], _ byteArr: S) where S.Element == UInt8 {
     writer.append(contentsOf: byteArr)
 }
 
-// Writes an integer in big-endian order.
-//
-// Warning: make sure what you are trying to write
-// is in the correct type!
-fileprivate func writeInt<T: FixedWidthInteger>(_ writer: inout [UInt8], _ value: T) {
+/// Writes an integer in big-endian order.
+///
+/// Warning: make sure what you are trying to write
+/// is in the correct type!
+private func writeInt<T: FixedWidthInteger>(_ writer: inout [UInt8], _ value: T) {
     var value = value.bigEndian
     withUnsafeBytes(of: &value) { writer.append(contentsOf: $0) }
 }
 
-fileprivate func writeFloat(_ writer: inout [UInt8], _ value: Float) {
+private func writeFloat(_ writer: inout [UInt8], _ value: Float) {
     writeInt(&writer, value.bitPattern)
 }
 
-fileprivate func writeDouble(_ writer: inout [UInt8], _ value: Double) {
+private func writeDouble(_ writer: inout [UInt8], _ value: Double) {
     writeInt(&writer, value.bitPattern)
 }
 
-// Protocol for types that transfer other types across the FFI. This is
-// analogous to the Rust trait of the same name.
-fileprivate protocol FfiConverter {
+/// Protocol for types that transfer other types across the FFI. This is
+/// analogous to the Rust trait of the same name.
+private protocol FfiConverter {
     associatedtype FfiType
     associatedtype SwiftType
 
@@ -166,33 +166,33 @@ fileprivate protocol FfiConverter {
     static func write(_ value: SwiftType, into buf: inout [UInt8])
 }
 
-// Types conforming to `Primitive` pass themselves directly over the FFI.
-fileprivate protocol FfiConverterPrimitive: FfiConverter where FfiType == SwiftType { }
+/// Types conforming to `Primitive` pass themselves directly over the FFI.
+private protocol FfiConverterPrimitive: FfiConverter where FfiType == SwiftType {}
 
 extension FfiConverterPrimitive {
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
+    #if swift(>=5.8)
+        @_documentation(visibility: private)
+    #endif
     public static func lift(_ value: FfiType) throws -> SwiftType {
         return value
     }
 
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
+    #if swift(>=5.8)
+        @_documentation(visibility: private)
+    #endif
     public static func lower(_ value: SwiftType) -> FfiType {
         return value
     }
 }
 
-// Types conforming to `FfiConverterRustBuffer` lift and lower into a `RustBuffer`.
-// Used for complex types where it's hard to write a custom lift/lower.
-fileprivate protocol FfiConverterRustBuffer: FfiConverter where FfiType == RustBuffer {}
+/// Types conforming to `FfiConverterRustBuffer` lift and lower into a `RustBuffer`.
+/// Used for complex types where it's hard to write a custom lift/lower.
+private protocol FfiConverterRustBuffer: FfiConverter where FfiType == RustBuffer {}
 
 extension FfiConverterRustBuffer {
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
+    #if swift(>=5.8)
+        @_documentation(visibility: private)
+    #endif
     public static func lift(_ buf: RustBuffer) throws -> SwiftType {
         var reader = createReader(data: Data(rustBuffer: buf))
         let value = try read(from: &reader)
@@ -203,18 +203,19 @@ extension FfiConverterRustBuffer {
         return value
     }
 
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
+    #if swift(>=5.8)
+        @_documentation(visibility: private)
+    #endif
     public static func lower(_ value: SwiftType) -> RustBuffer {
-          var writer = createWriter()
-          write(value, into: &writer)
-          return RustBuffer(bytes: writer)
+        var writer = createWriter()
+        write(value, into: &writer)
+        return RustBuffer(bytes: writer)
     }
 }
-// An error type for FFI errors. These errors occur at the UniFFI level, not
-// the library level.
-fileprivate enum UniffiInternalError: LocalizedError {
+
+/// An error type for FFI errors. These errors occur at the UniFFI level, not
+/// the library level.
+private enum UniffiInternalError: LocalizedError {
     case bufferOverflow
     case incompleteData
     case unexpectedOptionalTag
@@ -225,7 +226,7 @@ fileprivate enum UniffiInternalError: LocalizedError {
     case unexpectedStaleHandle
     case rustPanic(_ message: String)
 
-    public var errorDescription: String? {
+    var errorDescription: String? {
         switch self {
         case .bufferOverflow: return "Reading the requested value would read past the end of the buffer"
         case .incompleteData: return "The buffer still has data after lifting its containing value"
@@ -240,24 +241,24 @@ fileprivate enum UniffiInternalError: LocalizedError {
     }
 }
 
-fileprivate extension NSLock {
+private extension NSLock {
     func withLock<T>(f: () throws -> T) rethrows -> T {
-        self.lock()
+        lock()
         defer { self.unlock() }
         return try f()
     }
 }
 
-fileprivate let CALL_SUCCESS: Int8 = 0
-fileprivate let CALL_ERROR: Int8 = 1
-fileprivate let CALL_UNEXPECTED_ERROR: Int8 = 2
-fileprivate let CALL_CANCELLED: Int8 = 3
+private let CALL_SUCCESS: Int8 = 0
+private let CALL_ERROR: Int8 = 1
+private let CALL_UNEXPECTED_ERROR: Int8 = 2
+private let CALL_CANCELLED: Int8 = 3
 
-fileprivate extension RustCallStatus {
+private extension RustCallStatus {
     init() {
         self.init(
             code: CALL_SUCCESS,
-            errorBuf: RustBuffer.init(
+            errorBuf: RustBuffer(
                 capacity: 0,
                 len: 0,
                 data: nil
@@ -273,7 +274,8 @@ private func rustCall<T>(_ callback: (UnsafeMutablePointer<RustCallStatus>) -> T
 
 private func rustCallWithError<T, E: Swift.Error>(
     _ errorHandler: @escaping (RustBuffer) throws -> E,
-    _ callback: (UnsafeMutablePointer<RustCallStatus>) -> T) throws -> T {
+    _ callback: (UnsafeMutablePointer<RustCallStatus>) -> T
+) throws -> T {
     try makeRustCall(callback, errorHandler: errorHandler)
 }
 
@@ -282,7 +284,7 @@ private func makeRustCall<T, E: Swift.Error>(
     errorHandler: ((RustBuffer) throws -> E)?
 ) throws -> T {
     uniffiEnsureInitialized()
-    var callStatus = RustCallStatus.init()
+    var callStatus = RustCallStatus()
     let returnedVal = callback(&callStatus)
     try uniffiCheckCallStatus(callStatus: callStatus, errorHandler: errorHandler)
     return returnedVal
@@ -293,44 +295,44 @@ private func uniffiCheckCallStatus<E: Swift.Error>(
     errorHandler: ((RustBuffer) throws -> E)?
 ) throws {
     switch callStatus.code {
-        case CALL_SUCCESS:
-            return
+    case CALL_SUCCESS:
+        return
 
-        case CALL_ERROR:
-            if let errorHandler = errorHandler {
-                throw try errorHandler(callStatus.errorBuf)
-            } else {
-                callStatus.errorBuf.deallocate()
-                throw UniffiInternalError.unexpectedRustCallError
-            }
+    case CALL_ERROR:
+        if let errorHandler = errorHandler {
+            throw try errorHandler(callStatus.errorBuf)
+        } else {
+            callStatus.errorBuf.deallocate()
+            throw UniffiInternalError.unexpectedRustCallError
+        }
 
-        case CALL_UNEXPECTED_ERROR:
-            // When the rust code sees a panic, it tries to construct a RustBuffer
-            // with the message.  But if that code panics, then it just sends back
-            // an empty buffer.
-            if callStatus.errorBuf.len > 0 {
-                throw UniffiInternalError.rustPanic(try FfiConverterString.lift(callStatus.errorBuf))
-            } else {
-                callStatus.errorBuf.deallocate()
-                throw UniffiInternalError.rustPanic("Rust panic")
-            }
+    case CALL_UNEXPECTED_ERROR:
+        // When the rust code sees a panic, it tries to construct a RustBuffer
+        // with the message.  But if that code panics, then it just sends back
+        // an empty buffer.
+        if callStatus.errorBuf.len > 0 {
+            throw try UniffiInternalError.rustPanic(FfiConverterString.lift(callStatus.errorBuf))
+        } else {
+            callStatus.errorBuf.deallocate()
+            throw UniffiInternalError.rustPanic("Rust panic")
+        }
 
-        case CALL_CANCELLED:
-            fatalError("Cancellation not supported yet")
+    case CALL_CANCELLED:
+        fatalError("Cancellation not supported yet")
 
-        default:
-            throw UniffiInternalError.unexpectedRustCallStatusCode
+    default:
+        throw UniffiInternalError.unexpectedRustCallStatusCode
     }
 }
 
 private func uniffiTraitInterfaceCall<T>(
     callStatus: UnsafeMutablePointer<RustCallStatus>,
     makeCall: () throws -> T,
-    writeReturn: (T) -> ()
+    writeReturn: (T) -> Void
 ) {
     do {
         try writeReturn(makeCall())
-    } catch let error {
+    } catch {
         callStatus.pointee.code = CALL_UNEXPECTED_ERROR
         callStatus.pointee.errorBuf = FfiConverterString.lower(String(describing: error))
     }
@@ -339,7 +341,7 @@ private func uniffiTraitInterfaceCall<T>(
 private func uniffiTraitInterfaceCallWithError<T, E>(
     callStatus: UnsafeMutablePointer<RustCallStatus>,
     makeCall: () throws -> T,
-    writeReturn: (T) -> (),
+    writeReturn: (T) -> Void,
     lowerError: (E) -> RustBuffer
 ) {
     do {
@@ -352,7 +354,8 @@ private func uniffiTraitInterfaceCallWithError<T, E>(
         callStatus.pointee.errorBuf = FfiConverterString.lower(String(describing: error))
     }
 }
-fileprivate class UniffiHandleMap<T> {
+
+private class UniffiHandleMap<T> {
     private var map: [UInt64: T] = [:]
     private let lock = NSLock()
     private var currentHandle: UInt64 = 1
@@ -366,7 +369,7 @@ fileprivate class UniffiHandleMap<T> {
         }
     }
 
-     func get(handle: UInt64) throws -> T {
+    func get(handle: UInt64) throws -> T {
         try lock.withLock {
             guard let obj = map[handle] else {
                 throw UniffiInternalError.unexpectedStaleHandle
@@ -386,56 +389,52 @@ fileprivate class UniffiHandleMap<T> {
     }
 
     var count: Int {
-        get {
-            map.count
-        }
+        map.count
     }
 }
-
 
 // Public interface members begin here.
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterUInt16: FfiConverterPrimitive {
+private struct FfiConverterUInt16: FfiConverterPrimitive {
     typealias FfiType = UInt16
     typealias SwiftType = UInt16
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt16 {
+    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt16 {
         return try lift(readInt(&buf))
     }
 
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+    static func write(_ value: SwiftType, into buf: inout [UInt8]) {
         writeInt(&buf, lower(value))
     }
 }
 
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
+private struct FfiConverterUInt32: FfiConverterPrimitive {
     typealias FfiType = UInt32
     typealias SwiftType = UInt32
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt32 {
+    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt32 {
         return try lift(readInt(&buf))
     }
 
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+    static func write(_ value: SwiftType, into buf: inout [UInt8]) {
         writeInt(&buf, lower(value))
     }
 }
 
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterString: FfiConverter {
+private struct FfiConverterString: FfiConverter {
     typealias SwiftType = String
     typealias FfiType = RustBuffer
 
-    public static func lift(_ value: RustBuffer) throws -> String {
+    static func lift(_ value: RustBuffer) throws -> String {
         defer {
             value.deallocate()
         }
@@ -446,7 +445,7 @@ fileprivate struct FfiConverterString: FfiConverter {
         return String(bytes: bytes, encoding: String.Encoding.utf8)!
     }
 
-    public static func lower(_ value: String) -> RustBuffer {
+    static func lower(_ value: String) -> RustBuffer {
         return value.utf8CString.withUnsafeBufferPointer { ptr in
             // The swift string gives us int8_t, we want uint8_t.
             ptr.withMemoryRebound(to: UInt8.self) { ptr in
@@ -457,12 +456,12 @@ fileprivate struct FfiConverterString: FfiConverter {
         }
     }
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> String {
+    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> String {
         let len: Int32 = try readInt(&buf)
-        return String(bytes: try readBytes(&buf, count: Int(len)), encoding: String.Encoding.utf8)!
+        return try String(bytes: readBytes(&buf, count: Int(len)), encoding: String.Encoding.utf8)!
     }
 
-    public static func write(_ value: String, into buf: inout [UInt8]) {
+    static func write(_ value: String, into buf: inout [UInt8]) {
         let len = Int32(value.utf8.count)
         writeInt(&buf, len)
         writeBytes(&buf, value.utf8)
@@ -470,34 +469,29 @@ fileprivate struct FfiConverterString: FfiConverter {
 }
 
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterData: FfiConverterRustBuffer {
+private struct FfiConverterData: FfiConverterRustBuffer {
     typealias SwiftType = Data
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Data {
+    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Data {
         let len: Int32 = try readInt(&buf)
-        return Data(try readBytes(&buf, count: Int(len)))
+        return try Data(readBytes(&buf, count: Int(len)))
     }
 
-    public static func write(_ value: Data, into buf: inout [UInt8]) {
+    static func write(_ value: Data, into buf: inout [UInt8]) {
         let len = Int32(value.count)
         writeInt(&buf, len)
         writeBytes(&buf, value)
     }
 }
 
-
-
-
 /**
  * The cancel handle returned by every `on…` registration (ADR-0028).
  * `cancel()` unregisters the listener; idempotent.
  */
-public protocol SubscriptionProtocol : AnyObject {
-    
-    func cancel() 
-    
+public protocol SubscriptionProtocol: AnyObject {
+    func cancel()
 }
 
 /**
@@ -505,13 +499,14 @@ public protocol SubscriptionProtocol : AnyObject {
  * `cancel()` unregisters the listener; idempotent.
  */
 open class Subscription:
-    SubscriptionProtocol {
+    SubscriptionProtocol
+{
     fileprivate let pointer: UnsafeMutableRawPointer!
 
-    /// Used to instantiate a [FFIObject] without an actual pointer, for fakes in tests, mostly.
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
+    // Used to instantiate a [FFIObject] without an actual pointer, for fakes in tests, mostly.
+    #if swift(>=5.8)
+        @_documentation(visibility: private)
+    #endif
     public struct NoPointer {
         public init() {}
     }
@@ -519,7 +514,7 @@ open class Subscription:
     // TODO: We'd like this to be `private` but for Swifty reasons,
     // we can't implement `FfiConverter` without making this `required` and we can't
     // make it `required` without making it `public`.
-    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+    public required init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
         self.pointer = pointer
     }
 
@@ -528,19 +523,20 @@ open class Subscription:
     //
     // - Warning:
     //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing [Pointer] the FFI lower functions will crash.
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    public init(noPointer: NoPointer) {
-        self.pointer = nil
+    #if swift(>=5.8)
+        @_documentation(visibility: private)
+    #endif
+    public init(noPointer _: NoPointer) {
+        pointer = nil
     }
 
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
+    #if swift(>=5.8)
+        @_documentation(visibility: private)
+    #endif
     public func uniffiClonePointer() -> UnsafeMutableRawPointer {
         return try! rustCall { uniffi_trueseal_sync_fn_clone_subscription(self.pointer, $0) }
     }
+
     // No primary constructor declared for this class.
 
     deinit {
@@ -551,23 +547,17 @@ open class Subscription:
         try! rustCall { uniffi_trueseal_sync_fn_free_subscription(pointer, $0) }
     }
 
-    
-
-    
-open func cancel() {try! rustCall() {
-    uniffi_trueseal_sync_fn_method_subscription_cancel(self.uniffiClonePointer(),$0
-    )
-}
-}
-    
-
+    open func cancel() {
+        try! rustCall {
+            uniffi_trueseal_sync_fn_method_subscription_cancel(self.uniffiClonePointer(), $0)
+        }
+    }
 }
 
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public struct FfiConverterTypeSubscription: FfiConverter {
-
     typealias FfiType = UnsafeMutableRawPointer
     typealias SwiftType = Subscription
 
@@ -584,7 +574,7 @@ public struct FfiConverterTypeSubscription: FfiConverter {
         // The Rust code won't compile if a pointer won't fit in a UInt64.
         // We have to go via `UInt` because that's the thing that's the size of a pointer.
         let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
-        if (ptr == nil) {
+        if ptr == nil {
             throw UniffiInternalError.unexpectedNullPointer
         }
         return try lift(ptr!)
@@ -597,25 +587,19 @@ public struct FfiConverterTypeSubscription: FfiConverter {
     }
 }
 
-
-
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeSubscription_lift(_ pointer: UnsafeMutableRawPointer) throws -> Subscription {
     return try FfiConverterTypeSubscription.lift(pointer)
 }
 
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeSubscription_lower(_ value: Subscription) -> UnsafeMutableRawPointer {
     return FfiConverterTypeSubscription.lower(value)
 }
-
-
-
 
 /**
  * The canonical TrueSeal object (ADR-0028). One per namespace. Created
@@ -624,26 +608,25 @@ public func FfiConverterTypeSubscription_lower(_ value: Subscription) -> UnsafeM
  * membership: after removal, leave or Destroy Group it reports
  * `notJoined` with the reason and can pair again.
  */
-public protocol TrueSealProtocol : AnyObject {
-    
+public protocol TrueSealProtocol: AnyObject {
     /**
      * Admit the device behind a `joinRequest` event (ADR-0023). Fails
      * with `pairingClosed` (window closed or unknown request),
      * `groupFull{max}` (ADR-0027), `notMember{status}` while Leaving /
      * Destroying / PendingJoin, or `manifestVersionExhausted` (SYNC-10).
      */
-    func accept(requestId: String) throws 
-    
+    func accept(requestId: String) throws
+
     /**
      * Abandon a Pending Join (ADR-0023).
      */
-    func cancelJoin() throws 
-    
+    func cancelJoin() throws
+
     /**
      * Close the Pairing Window without admitting anyone.
      */
-    func cancelPairing() throws 
-    
+    func cancelPairing() throws
+
     /**
      * Stop the connection and the handlers; keep Session State
      * (ADR-0028). After `close()`, every call fails with `closed` —
@@ -651,62 +634,62 @@ public protocol TrueSealProtocol : AnyObject {
      * run to completion; their Blobs stay unacked and are re-delivered on
      * the next `open()` (at-least-once, ADR-0026).
      */
-    func close() 
-    
+    func close()
+
     /**
      * The relay link state (ADR-0028 `connection`).
      */
-    func connection() throws  -> ConnectionState
-    
+    func connection() throws -> ConnectionState
+
     /**
      * Destroy the group (ADR-0029): durable, forwarded Revoke; the device
      * stays `destroying` until the Relay has accepted every Revoke, then
      * wipes, rotates and reports `statusChanged(notJoined, destroyed)`.
      * No-op while already Destroying.
      */
-    func destroyGroup() throws 
-    
+    func destroyGroup() throws
+
     /**
      * Join the group a Pairing Token names (ADR-0023): moves to
      * `pendingJoin` and durably queues the Pair. Fails with
      * `invalidPairingToken` or `alreadyInGroup`.
      */
-    func join(token: String) throws 
-    
+    func join(token: String) throws
+
     /**
      * Leave the Sync Group (ADR-0027): moves to `leaving`; when the Relay
      * has accepted every push of the excluding manifest, the device wipes
      * and rotates and reports `statusChanged(notJoined, left)`.
      */
-    func leave() throws 
-    
+    func leave() throws
+
     /**
      * This device as a `Member` (ADR-0028 `me`) — the same `id` and
      * `name` other members see.
      */
-    func me() throws  -> Member
-    
+    func me() throws -> Member
+
     /**
      * Every other current member (ADR-0028 `members`). Empty when not in
      * a group.
      */
-    func members() throws  -> [Member]
-    
+    func members() throws -> [Member]
+
     /**
      * Register a delivery-issue listener (ADR-0026). Optional. Listeners
      * fire under the bus lock and must not call back into this object
      * synchronously.
      */
-    func onDeliveryIssue(listener: TrueSealIssueListener) throws  -> Subscription
-    
+    func onDeliveryIssue(listener: TrueSealIssueListener) throws -> Subscription
+
     /**
      * Register an event listener (ADR-0028). Any number; events raised
      * before the first listener registers are buffered and flushed to it.
      * Listeners fire under the bus lock (same rule as the core's sinks):
      * they must not call back into this object synchronously.
      */
-    func onEvent(listener: TrueSealEventListener) throws  -> Subscription
-    
+    func onEvent(listener: TrueSealEventListener) throws -> Subscription
+
     /**
      * Register THE message handler; registration starts receiving
      * (ADR-0026). The handler is async and awaited — a Blob is acked only
@@ -714,13 +697,13 @@ public protocol TrueSealProtocol : AnyObject {
      * `messageHandlerAlreadySet`; cancelling the returned Subscription
      * unregisters the handler (receiving waits again).
      */
-    func onMessage(handler: TrueSealMessageHandler) throws  -> Subscription
-    
+    func onMessage(handler: TrueSealMessageHandler) throws -> Subscription
+
     /**
      * Remove a member by their `Member.id` (Soft Removal, ADR-0027).
      */
-    func remove(memberId: String) throws 
-    
+    func remove(memberId: String) throws
+
     /**
      * Queue `body` for fan-out to every group member (ADR-0026). Returns
      * the Message ID once the message is durably in the outbox — delivery
@@ -730,8 +713,8 @@ public protocol TrueSealProtocol : AnyObject {
      * Fails immediately with `payloadTooLarge{max}` (ADR-0025) or
      * `notMember{status}`.
      */
-    func send(body: Data) throws  -> String
-    
+    func send(body: Data) throws -> String
+
     /**
      * Open a Pairing Window and return the Pairing Token (ADR-0023).
      * Requests arrive as `joinRequest` events; the window closes on the
@@ -739,13 +722,12 @@ public protocol TrueSealProtocol : AnyObject {
      * `notMember{destroying}` while Destroying (ADR-0029) and
      * `notMember{pendingJoin}` while a Pending Join is held (ADR-0023).
      */
-    func startPairing() throws  -> String
-    
+    func startPairing() throws -> String
+
     /**
      * The group status (ADR-0028 `status`).
      */
-    func status() throws  -> GroupStatus
-    
+    func status() throws -> GroupStatus
 }
 
 /**
@@ -756,13 +738,14 @@ public protocol TrueSealProtocol : AnyObject {
  * `notJoined` with the reason and can pair again.
  */
 open class TrueSeal:
-    TrueSealProtocol {
+    TrueSealProtocol
+{
     fileprivate let pointer: UnsafeMutableRawPointer!
 
-    /// Used to instantiate a [FFIObject] without an actual pointer, for fakes in tests, mostly.
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
+    // Used to instantiate a [FFIObject] without an actual pointer, for fakes in tests, mostly.
+    #if swift(>=5.8)
+        @_documentation(visibility: private)
+    #endif
     public struct NoPointer {
         public init() {}
     }
@@ -770,7 +753,7 @@ open class TrueSeal:
     // TODO: We'd like this to be `private` but for Swifty reasons,
     // we can't implement `FfiConverter` without making this `required` and we can't
     // make it `required` without making it `public`.
-    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+    public required init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
         self.pointer = pointer
     }
 
@@ -779,19 +762,20 @@ open class TrueSeal:
     //
     // - Warning:
     //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing [Pointer] the FFI lower functions will crash.
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    public init(noPointer: NoPointer) {
-        self.pointer = nil
+    #if swift(>=5.8)
+        @_documentation(visibility: private)
+    #endif
+    public init(noPointer _: NoPointer) {
+        pointer = nil
     }
 
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
+    #if swift(>=5.8)
+        @_documentation(visibility: private)
+    #endif
     public func uniffiClonePointer() -> UnsafeMutableRawPointer {
         return try! rustCall { uniffi_trueseal_sync_fn_clone_trueseal(self.pointer, $0) }
     }
+
     // No primary constructor declared for this class.
 
     deinit {
@@ -802,7 +786,6 @@ open class TrueSeal:
         try! rustCall { uniffi_trueseal_sync_fn_free_trueseal(pointer, $0) }
     }
 
-    
     /**
      * Open a session on `namespace` (default `"default"`) with state under
      * `base_dir`, connecting to the relay named by `relay` — a Relay
@@ -818,64 +801,62 @@ open class TrueSeal:
      * (ADR-0025). The option is creation-time by design: the limit is a
      * property of how the app deploys, not something to mutate mid-flight.
      */
-public static func `open`(relay: String, baseDir: String, namespace: String?, maxPayloadBytes: UInt32?)throws  -> TrueSeal {
-    return try  FfiConverterTypeTrueSeal.lift(try rustCallWithError(FfiConverterTypeTrueSealError.lift) {
-    uniffi_trueseal_sync_fn_constructor_trueseal_open(
-        FfiConverterString.lower(relay),
-        FfiConverterString.lower(baseDir),
-        FfiConverterOptionString.lower(namespace),
-        FfiConverterOptionUInt32.lower(maxPayloadBytes),$0
-    )
-})
-}
-    
+    public static func open(relay: String, baseDir: String, namespace: String?, maxPayloadBytes: UInt32?) throws -> TrueSeal {
+        return try FfiConverterTypeTrueSeal.lift(rustCallWithError(FfiConverterTypeTrueSealError.lift) {
+            uniffi_trueseal_sync_fn_constructor_trueseal_open(
+                FfiConverterString.lower(relay),
+                FfiConverterString.lower(baseDir),
+                FfiConverterOptionString.lower(namespace),
+                FfiConverterOptionUInt32.lower(maxPayloadBytes), $0
+            )
+        })
+    }
+
     /**
      * [`Self::open`] with the typed Relay Address form (ADR-0028).
      */
-public static func openWithAddress(relay: RelayAddress, baseDir: String, namespace: String?, maxPayloadBytes: UInt32?)throws  -> TrueSeal {
-    return try  FfiConverterTypeTrueSeal.lift(try rustCallWithError(FfiConverterTypeTrueSealError.lift) {
-    uniffi_trueseal_sync_fn_constructor_trueseal_open_with_address(
-        FfiConverterTypeRelayAddress.lower(relay),
-        FfiConverterString.lower(baseDir),
-        FfiConverterOptionString.lower(namespace),
-        FfiConverterOptionUInt32.lower(maxPayloadBytes),$0
-    )
-})
-}
-    
+    public static func openWithAddress(relay: RelayAddress, baseDir: String, namespace: String?, maxPayloadBytes: UInt32?) throws -> TrueSeal {
+        return try FfiConverterTypeTrueSeal.lift(rustCallWithError(FfiConverterTypeTrueSealError.lift) {
+            uniffi_trueseal_sync_fn_constructor_trueseal_open_with_address(
+                FfiConverterTypeRelayAddress.lower(relay),
+                FfiConverterString.lower(baseDir),
+                FfiConverterOptionString.lower(namespace),
+                FfiConverterOptionUInt32.lower(maxPayloadBytes), $0
+            )
+        })
+    }
 
-    
     /**
      * Admit the device behind a `joinRequest` event (ADR-0023). Fails
      * with `pairingClosed` (window closed or unknown request),
      * `groupFull{max}` (ADR-0027), `notMember{status}` while Leaving /
      * Destroying / PendingJoin, or `manifestVersionExhausted` (SYNC-10).
      */
-open func accept(requestId: String)throws  {try rustCallWithError(FfiConverterTypeTrueSealError.lift) {
-    uniffi_trueseal_sync_fn_method_trueseal_accept(self.uniffiClonePointer(),
-        FfiConverterString.lower(requestId),$0
-    )
-}
-}
-    
+    open func accept(requestId: String) throws {
+        try rustCallWithError(FfiConverterTypeTrueSealError.lift) {
+            uniffi_trueseal_sync_fn_method_trueseal_accept(self.uniffiClonePointer(),
+                                                           FfiConverterString.lower(requestId), $0)
+        }
+    }
+
     /**
      * Abandon a Pending Join (ADR-0023).
      */
-open func cancelJoin()throws  {try rustCallWithError(FfiConverterTypeTrueSealError.lift) {
-    uniffi_trueseal_sync_fn_method_trueseal_cancel_join(self.uniffiClonePointer(),$0
-    )
-}
-}
-    
+    open func cancelJoin() throws {
+        try rustCallWithError(FfiConverterTypeTrueSealError.lift) {
+            uniffi_trueseal_sync_fn_method_trueseal_cancel_join(self.uniffiClonePointer(), $0)
+        }
+    }
+
     /**
      * Close the Pairing Window without admitting anyone.
      */
-open func cancelPairing()throws  {try rustCallWithError(FfiConverterTypeTrueSealError.lift) {
-    uniffi_trueseal_sync_fn_method_trueseal_cancel_pairing(self.uniffiClonePointer(),$0
-    )
-}
-}
-    
+    open func cancelPairing() throws {
+        try rustCallWithError(FfiConverterTypeTrueSealError.lift) {
+            uniffi_trueseal_sync_fn_method_trueseal_cancel_pairing(self.uniffiClonePointer(), $0)
+        }
+    }
+
     /**
      * Stop the connection and the handlers; keep Session State
      * (ADR-0028). After `close()`, every call fails with `closed` —
@@ -883,106 +864,101 @@ open func cancelPairing()throws  {try rustCallWithError(FfiConverterTypeTrueSeal
      * run to completion; their Blobs stay unacked and are re-delivered on
      * the next `open()` (at-least-once, ADR-0026).
      */
-open func close() {try! rustCall() {
-    uniffi_trueseal_sync_fn_method_trueseal_close(self.uniffiClonePointer(),$0
-    )
-}
-}
-    
+    open func close() {
+        try! rustCall {
+            uniffi_trueseal_sync_fn_method_trueseal_close(self.uniffiClonePointer(), $0)
+        }
+    }
+
     /**
      * The relay link state (ADR-0028 `connection`).
      */
-open func connection()throws  -> ConnectionState {
-    return try  FfiConverterTypeConnectionState.lift(try rustCallWithError(FfiConverterTypeTrueSealError.lift) {
-    uniffi_trueseal_sync_fn_method_trueseal_connection(self.uniffiClonePointer(),$0
-    )
-})
-}
-    
+    open func connection() throws -> ConnectionState {
+        return try FfiConverterTypeConnectionState.lift(rustCallWithError(FfiConverterTypeTrueSealError.lift) {
+            uniffi_trueseal_sync_fn_method_trueseal_connection(self.uniffiClonePointer(), $0)
+        })
+    }
+
     /**
      * Destroy the group (ADR-0029): durable, forwarded Revoke; the device
      * stays `destroying` until the Relay has accepted every Revoke, then
      * wipes, rotates and reports `statusChanged(notJoined, destroyed)`.
      * No-op while already Destroying.
      */
-open func destroyGroup()throws  {try rustCallWithError(FfiConverterTypeTrueSealError.lift) {
-    uniffi_trueseal_sync_fn_method_trueseal_destroy_group(self.uniffiClonePointer(),$0
-    )
-}
-}
-    
+    open func destroyGroup() throws {
+        try rustCallWithError(FfiConverterTypeTrueSealError.lift) {
+            uniffi_trueseal_sync_fn_method_trueseal_destroy_group(self.uniffiClonePointer(), $0)
+        }
+    }
+
     /**
      * Join the group a Pairing Token names (ADR-0023): moves to
      * `pendingJoin` and durably queues the Pair. Fails with
      * `invalidPairingToken` or `alreadyInGroup`.
      */
-open func join(token: String)throws  {try rustCallWithError(FfiConverterTypeTrueSealError.lift) {
-    uniffi_trueseal_sync_fn_method_trueseal_join(self.uniffiClonePointer(),
-        FfiConverterString.lower(token),$0
-    )
-}
-}
-    
+    open func join(token: String) throws {
+        try rustCallWithError(FfiConverterTypeTrueSealError.lift) {
+            uniffi_trueseal_sync_fn_method_trueseal_join(self.uniffiClonePointer(),
+                                                         FfiConverterString.lower(token), $0)
+        }
+    }
+
     /**
      * Leave the Sync Group (ADR-0027): moves to `leaving`; when the Relay
      * has accepted every push of the excluding manifest, the device wipes
      * and rotates and reports `statusChanged(notJoined, left)`.
      */
-open func leave()throws  {try rustCallWithError(FfiConverterTypeTrueSealError.lift) {
-    uniffi_trueseal_sync_fn_method_trueseal_leave(self.uniffiClonePointer(),$0
-    )
-}
-}
-    
+    open func leave() throws {
+        try rustCallWithError(FfiConverterTypeTrueSealError.lift) {
+            uniffi_trueseal_sync_fn_method_trueseal_leave(self.uniffiClonePointer(), $0)
+        }
+    }
+
     /**
      * This device as a `Member` (ADR-0028 `me`) — the same `id` and
      * `name` other members see.
      */
-open func me()throws  -> Member {
-    return try  FfiConverterTypeMember.lift(try rustCallWithError(FfiConverterTypeTrueSealError.lift) {
-    uniffi_trueseal_sync_fn_method_trueseal_me(self.uniffiClonePointer(),$0
-    )
-})
-}
-    
+    open func me() throws -> Member {
+        return try FfiConverterTypeMember.lift(rustCallWithError(FfiConverterTypeTrueSealError.lift) {
+            uniffi_trueseal_sync_fn_method_trueseal_me(self.uniffiClonePointer(), $0)
+        })
+    }
+
     /**
      * Every other current member (ADR-0028 `members`). Empty when not in
      * a group.
      */
-open func members()throws  -> [Member] {
-    return try  FfiConverterSequenceTypeMember.lift(try rustCallWithError(FfiConverterTypeTrueSealError.lift) {
-    uniffi_trueseal_sync_fn_method_trueseal_members(self.uniffiClonePointer(),$0
-    )
-})
-}
-    
+    open func members() throws -> [Member] {
+        return try FfiConverterSequenceTypeMember.lift(rustCallWithError(FfiConverterTypeTrueSealError.lift) {
+            uniffi_trueseal_sync_fn_method_trueseal_members(self.uniffiClonePointer(), $0)
+        })
+    }
+
     /**
      * Register a delivery-issue listener (ADR-0026). Optional. Listeners
      * fire under the bus lock and must not call back into this object
      * synchronously.
      */
-open func onDeliveryIssue(listener: TrueSealIssueListener)throws  -> Subscription {
-    return try  FfiConverterTypeSubscription.lift(try rustCallWithError(FfiConverterTypeTrueSealError.lift) {
-    uniffi_trueseal_sync_fn_method_trueseal_on_delivery_issue(self.uniffiClonePointer(),
-        FfiConverterCallbackInterfaceTrueSealIssueListener.lower(listener),$0
-    )
-})
-}
-    
+    open func onDeliveryIssue(listener: TrueSealIssueListener) throws -> Subscription {
+        return try FfiConverterTypeSubscription.lift(rustCallWithError(FfiConverterTypeTrueSealError.lift) {
+            uniffi_trueseal_sync_fn_method_trueseal_on_delivery_issue(self.uniffiClonePointer(),
+                                                                      FfiConverterCallbackInterfaceTrueSealIssueListener.lower(listener), $0)
+        })
+    }
+
     /**
      * Register an event listener (ADR-0028). Any number; events raised
      * before the first listener registers are buffered and flushed to it.
      * Listeners fire under the bus lock (same rule as the core's sinks):
      * they must not call back into this object synchronously.
      */
-open func onEvent(listener: TrueSealEventListener)throws  -> Subscription {
-    return try  FfiConverterTypeSubscription.lift(try rustCallWithError(FfiConverterTypeTrueSealError.lift) {
-    uniffi_trueseal_sync_fn_method_trueseal_on_event(self.uniffiClonePointer(),
-        FfiConverterCallbackInterfaceTrueSealEventListener.lower(listener),$0
-    )
-})
-}
-    
+    open func onEvent(listener: TrueSealEventListener) throws -> Subscription {
+        return try FfiConverterTypeSubscription.lift(rustCallWithError(FfiConverterTypeTrueSealError.lift) {
+            uniffi_trueseal_sync_fn_method_trueseal_on_event(self.uniffiClonePointer(),
+                                                             FfiConverterCallbackInterfaceTrueSealEventListener.lower(listener), $0)
+        })
+    }
+
     /**
      * Register THE message handler; registration starts receiving
      * (ADR-0026). The handler is async and awaited — a Blob is acked only
@@ -990,24 +966,23 @@ open func onEvent(listener: TrueSealEventListener)throws  -> Subscription {
      * `messageHandlerAlreadySet`; cancelling the returned Subscription
      * unregisters the handler (receiving waits again).
      */
-open func onMessage(handler: TrueSealMessageHandler)throws  -> Subscription {
-    return try  FfiConverterTypeSubscription.lift(try rustCallWithError(FfiConverterTypeTrueSealError.lift) {
-    uniffi_trueseal_sync_fn_method_trueseal_on_message(self.uniffiClonePointer(),
-        FfiConverterCallbackInterfaceTrueSealMessageHandler.lower(handler),$0
-    )
-})
-}
-    
+    open func onMessage(handler: TrueSealMessageHandler) throws -> Subscription {
+        return try FfiConverterTypeSubscription.lift(rustCallWithError(FfiConverterTypeTrueSealError.lift) {
+            uniffi_trueseal_sync_fn_method_trueseal_on_message(self.uniffiClonePointer(),
+                                                               FfiConverterCallbackInterfaceTrueSealMessageHandler.lower(handler), $0)
+        })
+    }
+
     /**
      * Remove a member by their `Member.id` (Soft Removal, ADR-0027).
      */
-open func remove(memberId: String)throws  {try rustCallWithError(FfiConverterTypeTrueSealError.lift) {
-    uniffi_trueseal_sync_fn_method_trueseal_remove(self.uniffiClonePointer(),
-        FfiConverterString.lower(memberId),$0
-    )
-}
-}
-    
+    open func remove(memberId: String) throws {
+        try rustCallWithError(FfiConverterTypeTrueSealError.lift) {
+            uniffi_trueseal_sync_fn_method_trueseal_remove(self.uniffiClonePointer(),
+                                                           FfiConverterString.lower(memberId), $0)
+        }
+    }
+
     /**
      * Queue `body` for fan-out to every group member (ADR-0026). Returns
      * the Message ID once the message is durably in the outbox — delivery
@@ -1017,14 +992,13 @@ open func remove(memberId: String)throws  {try rustCallWithError(FfiConverterTyp
      * Fails immediately with `payloadTooLarge{max}` (ADR-0025) or
      * `notMember{status}`.
      */
-open func send(body: Data)throws  -> String {
-    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeTrueSealError.lift) {
-    uniffi_trueseal_sync_fn_method_trueseal_send(self.uniffiClonePointer(),
-        FfiConverterData.lower(body),$0
-    )
-})
-}
-    
+    open func send(body: Data) throws -> String {
+        return try FfiConverterString.lift(rustCallWithError(FfiConverterTypeTrueSealError.lift) {
+            uniffi_trueseal_sync_fn_method_trueseal_send(self.uniffiClonePointer(),
+                                                         FfiConverterData.lower(body), $0)
+        })
+    }
+
     /**
      * Open a Pairing Window and return the Pairing Token (ADR-0023).
      * Requests arrive as `joinRequest` events; the window closes on the
@@ -1032,31 +1006,26 @@ open func send(body: Data)throws  -> String {
      * `notMember{destroying}` while Destroying (ADR-0029) and
      * `notMember{pendingJoin}` while a Pending Join is held (ADR-0023).
      */
-open func startPairing()throws  -> String {
-    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeTrueSealError.lift) {
-    uniffi_trueseal_sync_fn_method_trueseal_start_pairing(self.uniffiClonePointer(),$0
-    )
-})
-}
-    
+    open func startPairing() throws -> String {
+        return try FfiConverterString.lift(rustCallWithError(FfiConverterTypeTrueSealError.lift) {
+            uniffi_trueseal_sync_fn_method_trueseal_start_pairing(self.uniffiClonePointer(), $0)
+        })
+    }
+
     /**
      * The group status (ADR-0028 `status`).
      */
-open func status()throws  -> GroupStatus {
-    return try  FfiConverterTypeGroupStatus.lift(try rustCallWithError(FfiConverterTypeTrueSealError.lift) {
-    uniffi_trueseal_sync_fn_method_trueseal_status(self.uniffiClonePointer(),$0
-    )
-})
-}
-    
-
+    open func status() throws -> GroupStatus {
+        return try FfiConverterTypeGroupStatus.lift(rustCallWithError(FfiConverterTypeTrueSealError.lift) {
+            uniffi_trueseal_sync_fn_method_trueseal_status(self.uniffiClonePointer(), $0)
+        })
+    }
 }
 
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public struct FfiConverterTypeTrueSeal: FfiConverter {
-
     typealias FfiType = UnsafeMutableRawPointer
     typealias SwiftType = TrueSeal
 
@@ -1073,7 +1042,7 @@ public struct FfiConverterTypeTrueSeal: FfiConverter {
         // The Rust code won't compile if a pointer won't fit in a UInt64.
         // We have to go via `UInt` because that's the thing that's the size of a pointer.
         let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
-        if (ptr == nil) {
+        if ptr == nil {
             throw UniffiInternalError.unexpectedNullPointer
         }
         return try lift(ptr!)
@@ -1086,23 +1055,19 @@ public struct FfiConverterTypeTrueSeal: FfiConverter {
     }
 }
 
-
-
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeTrueSeal_lift(_ pointer: UnsafeMutableRawPointer) throws -> TrueSeal {
     return try FfiConverterTypeTrueSeal.lift(pointer)
 }
 
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeTrueSeal_lower(_ value: TrueSeal) -> UnsafeMutableRawPointer {
     return FfiConverterTypeTrueSeal.lower(value)
 }
-
 
 /**
  * The admitter's view of a Pair that proved knowledge of the Pairing
@@ -1113,18 +1078,16 @@ public struct JoinRequest {
     public var id: String
     public var name: String
 
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
+    /// Default memberwise initializers are never public by default, so we
+    /// declare one manually.
     public init(id: String, name: String) {
         self.id = id
         self.name = name
     }
 }
 
-
-
 extension JoinRequest: Equatable, Hashable {
-    public static func ==(lhs: JoinRequest, rhs: JoinRequest) -> Bool {
+    public static func == (lhs: JoinRequest, rhs: JoinRequest) -> Bool {
         if lhs.id != rhs.id {
             return false
         }
@@ -1140,17 +1103,16 @@ extension JoinRequest: Equatable, Hashable {
     }
 }
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public struct FfiConverterTypeJoinRequest: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> JoinRequest {
         return
             try JoinRequest(
-                id: FfiConverterString.read(from: &buf), 
+                id: FfiConverterString.read(from: &buf),
                 name: FfiConverterString.read(from: &buf)
-        )
+            )
     }
 
     public static func write(_ value: JoinRequest, into buf: inout [UInt8]) {
@@ -1159,21 +1121,19 @@ public struct FfiConverterTypeJoinRequest: FfiConverterRustBuffer {
     }
 }
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeJoinRequest_lift(_ buf: RustBuffer) throws -> JoinRequest {
     return try FfiConverterTypeJoinRequest.lift(buf)
 }
 
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeJoinRequest_lower(_ value: JoinRequest) -> RustBuffer {
     return FfiConverterTypeJoinRequest.lower(value)
 }
-
 
 /**
  * A group member (ADR-0028). `id` is stable and opaque, derived from the
@@ -1183,18 +1143,16 @@ public struct Member {
     public var id: String
     public var name: String
 
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
+    /// Default memberwise initializers are never public by default, so we
+    /// declare one manually.
     public init(id: String, name: String) {
         self.id = id
         self.name = name
     }
 }
 
-
-
 extension Member: Equatable, Hashable {
-    public static func ==(lhs: Member, rhs: Member) -> Bool {
+    public static func == (lhs: Member, rhs: Member) -> Bool {
         if lhs.id != rhs.id {
             return false
         }
@@ -1210,17 +1168,16 @@ extension Member: Equatable, Hashable {
     }
 }
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public struct FfiConverterTypeMember: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Member {
         return
             try Member(
-                id: FfiConverterString.read(from: &buf), 
+                id: FfiConverterString.read(from: &buf),
                 name: FfiConverterString.read(from: &buf)
-        )
+            )
     }
 
     public static func write(_ value: Member, into buf: inout [UInt8]) {
@@ -1229,21 +1186,19 @@ public struct FfiConverterTypeMember: FfiConverterRustBuffer {
     }
 }
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeMember_lift(_ buf: RustBuffer) throws -> Member {
     return try FfiConverterTypeMember.lift(buf)
 }
 
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeMember_lower(_ value: Member) -> RustBuffer {
     return FfiConverterTypeMember.lower(value)
 }
-
 
 /**
  * The typed form of a Relay Address (ADR-0028). `open()` accepts either
@@ -1258,12 +1213,13 @@ public struct RelayAddress {
     public var receivePort: UInt16
     public var pushPort: UInt16
 
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(host: String, 
-        /**
-         * The relay's 32-byte X25519 public key.
-         */publicKey: Data, receivePort: UInt16, pushPort: UInt16) {
+    /// Default memberwise initializers are never public by default, so we
+    /// declare one manually.
+    public init(host: String,
+                /* 
+                    * The relay's 32-byte X25519 public key.
+                    */ publicKey: Data, receivePort: UInt16, pushPort: UInt16)
+    {
         self.host = host
         self.publicKey = publicKey
         self.receivePort = receivePort
@@ -1271,10 +1227,8 @@ public struct RelayAddress {
     }
 }
 
-
-
 extension RelayAddress: Equatable, Hashable {
-    public static func ==(lhs: RelayAddress, rhs: RelayAddress) -> Bool {
+    public static func == (lhs: RelayAddress, rhs: RelayAddress) -> Bool {
         if lhs.host != rhs.host {
             return false
         }
@@ -1298,19 +1252,18 @@ extension RelayAddress: Equatable, Hashable {
     }
 }
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public struct FfiConverterTypeRelayAddress: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RelayAddress {
         return
             try RelayAddress(
-                host: FfiConverterString.read(from: &buf), 
-                publicKey: FfiConverterData.read(from: &buf), 
-                receivePort: FfiConverterUInt16.read(from: &buf), 
+                host: FfiConverterString.read(from: &buf),
+                publicKey: FfiConverterData.read(from: &buf),
+                receivePort: FfiConverterUInt16.read(from: &buf),
                 pushPort: FfiConverterUInt16.read(from: &buf)
-        )
+            )
     }
 
     public static func write(_ value: RelayAddress, into buf: inout [UInt8]) {
@@ -1321,21 +1274,19 @@ public struct FfiConverterTypeRelayAddress: FfiConverterRustBuffer {
     }
 }
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeRelayAddress_lift(_ buf: RustBuffer) throws -> RelayAddress {
     return try FfiConverterTypeRelayAddress.lift(buf)
 }
 
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeRelayAddress_lower(_ value: RelayAddress) -> RustBuffer {
     return FfiConverterTypeRelayAddress.lower(value)
 }
-
 
 /**
  * A delivered `Sync` message (ADR-0026, ADR-0031).
@@ -1357,31 +1308,30 @@ public struct TrueSealMessage {
      */
     public var body: Data
 
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
+    /// Default memberwise initializers are never public by default, so we
+    /// declare one manually.
     public init(
-        /**
+        /* 
          * Stable, opaque, derived from the author's signing key and the
          * Envelope Sequence. The same across relay re-delivery; a caller sees
          * it twice only if it crashed while handling the message.
-         */id: String, 
-        /**
-         * The sending member. `from.id` is the same identifier as in
-         * `members` (ADR-0028).
-         */from: Member, 
-        /**
-         * The raw application payload.
-         */body: Data) {
+         */ id: String,
+        /* 
+            * The sending member. `from.id` is the same identifier as in
+            * `members` (ADR-0028).
+            */ from: Member,
+        /* 
+            * The raw application payload.
+            */ body: Data
+    ) {
         self.id = id
         self.from = from
         self.body = body
     }
 }
 
-
-
 extension TrueSealMessage: Equatable, Hashable {
-    public static func ==(lhs: TrueSealMessage, rhs: TrueSealMessage) -> Bool {
+    public static func == (lhs: TrueSealMessage, rhs: TrueSealMessage) -> Bool {
         if lhs.id != rhs.id {
             return false
         }
@@ -1401,18 +1351,17 @@ extension TrueSealMessage: Equatable, Hashable {
     }
 }
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public struct FfiConverterTypeTrueSealMessage: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TrueSealMessage {
         return
             try TrueSealMessage(
-                id: FfiConverterString.read(from: &buf), 
-                from: FfiConverterTypeMember.read(from: &buf), 
+                id: FfiConverterString.read(from: &buf),
+                from: FfiConverterTypeMember.read(from: &buf),
                 body: FfiConverterData.read(from: &buf)
-        )
+            )
     }
 
     public static func write(_ value: TrueSealMessage, into buf: inout [UInt8]) {
@@ -1422,21 +1371,19 @@ public struct FfiConverterTypeTrueSealMessage: FfiConverterRustBuffer {
     }
 }
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeTrueSealMessage_lift(_ buf: RustBuffer) throws -> TrueSealMessage {
     return try FfiConverterTypeTrueSealMessage.lift(buf)
 }
 
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeTrueSealMessage_lower(_ value: TrueSealMessage) -> RustBuffer {
     return FfiConverterTypeTrueSealMessage.lower(value)
 }
-
 
 /**
  * Version triple reported by every TrueSeal SDK (ADR-0022, ADR-0030).
@@ -1446,8 +1393,8 @@ public struct TruesealInfo {
     public var transportVersion: UInt32
     public var endToEndVersion: UInt32
 
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
+    /// Default memberwise initializers are never public by default, so we
+    /// declare one manually.
     public init(sdkVersion: String, transportVersion: UInt32, endToEndVersion: UInt32) {
         self.sdkVersion = sdkVersion
         self.transportVersion = transportVersion
@@ -1455,10 +1402,8 @@ public struct TruesealInfo {
     }
 }
 
-
-
 extension TruesealInfo: Equatable, Hashable {
-    public static func ==(lhs: TruesealInfo, rhs: TruesealInfo) -> Bool {
+    public static func == (lhs: TruesealInfo, rhs: TruesealInfo) -> Bool {
         if lhs.sdkVersion != rhs.sdkVersion {
             return false
         }
@@ -1478,18 +1423,17 @@ extension TruesealInfo: Equatable, Hashable {
     }
 }
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public struct FfiConverterTypeTruesealInfo: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TruesealInfo {
         return
             try TruesealInfo(
-                sdkVersion: FfiConverterString.read(from: &buf), 
-                transportVersion: FfiConverterUInt32.read(from: &buf), 
+                sdkVersion: FfiConverterString.read(from: &buf),
+                transportVersion: FfiConverterUInt32.read(from: &buf),
                 endToEndVersion: FfiConverterUInt32.read(from: &buf)
-        )
+            )
     }
 
     public static func write(_ value: TruesealInfo, into buf: inout [UInt8]) {
@@ -1499,16 +1443,15 @@ public struct FfiConverterTypeTruesealInfo: FfiConverterRustBuffer {
     }
 }
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeTruesealInfo_lift(_ buf: RustBuffer) throws -> TruesealInfo {
     return try FfiConverterTypeTruesealInfo.lift(buf)
 }
 
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeTruesealInfo_lower(_ value: TruesealInfo) -> RustBuffer {
     return FfiConverterTypeTruesealInfo.lower(value)
@@ -1516,21 +1459,19 @@ public func FfiConverterTypeTruesealInfo_lower(_ value: TruesealInfo) -> RustBuf
 
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
-/**
+/* 
  * Why an admission was dropped during membership convergence (ADR-0027).
  */
 
 public enum AdmissionDropReason {
-    
     /**
      * Re-applying the admission would exceed the Maximum Group Size.
      */
     case groupFull
 }
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public struct FfiConverterTypeAdmissionDropReason: FfiConverterRustBuffer {
     typealias SwiftType = AdmissionDropReason
@@ -1538,53 +1479,43 @@ public struct FfiConverterTypeAdmissionDropReason: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AdmissionDropReason {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-        
         case 1: return .groupFull
-        
+
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: AdmissionDropReason, into buf: inout [UInt8]) {
         switch value {
-        
-        
         case .groupFull:
             writeInt(&buf, Int32(1))
-        
         }
     }
 }
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeAdmissionDropReason_lift(_ buf: RustBuffer) throws -> AdmissionDropReason {
     return try FfiConverterTypeAdmissionDropReason.lift(buf)
 }
 
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeAdmissionDropReason_lower(_ value: AdmissionDropReason) -> RustBuffer {
     return FfiConverterTypeAdmissionDropReason.lower(value)
 }
 
-
-
 extension AdmissionDropReason: Equatable, Hashable {}
-
-
 
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
-/**
+/* 
  * The relay link state (ADR-0028 `connection`).
  */
 
 public enum ConnectionState {
-    
     /**
      * Never connected since `open()`. The library connects in the
      * background; this is the initial value of the `connection` getter,
@@ -1604,13 +1535,11 @@ public enum ConnectionState {
      * supports (ADR-0022). The outbox stays queued and the library keeps
      * retrying in case the Relay is upgraded.
      */
-    case relayVersionUnsupported(min: UInt32, max: UInt32
-    )
+    case relayVersionUnsupported(min: UInt32, max: UInt32)
 }
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public struct FfiConverterTypeConnectionState: FfiConverterRustBuffer {
     typealias SwiftType = ConnectionState
@@ -1618,69 +1547,56 @@ public struct FfiConverterTypeConnectionState: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ConnectionState {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-        
         case 1: return .connecting
-        
+
         case 2: return .connected
-        
+
         case 3: return .disconnected
-        
-        case 4: return .relayVersionUnsupported(min: try FfiConverterUInt32.read(from: &buf), max: try FfiConverterUInt32.read(from: &buf)
-        )
-        
+
+        case 4: return try .relayVersionUnsupported(min: FfiConverterUInt32.read(from: &buf), max: FfiConverterUInt32.read(from: &buf))
+
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: ConnectionState, into buf: inout [UInt8]) {
         switch value {
-        
-        
         case .connecting:
             writeInt(&buf, Int32(1))
-        
-        
+
         case .connected:
             writeInt(&buf, Int32(2))
-        
-        
+
         case .disconnected:
             writeInt(&buf, Int32(3))
-        
-        
-        case let .relayVersionUnsupported(min,max):
+
+        case let .relayVersionUnsupported(min, max):
             writeInt(&buf, Int32(4))
             FfiConverterUInt32.write(min, into: &buf)
             FfiConverterUInt32.write(max, into: &buf)
-            
         }
     }
 }
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeConnectionState_lift(_ buf: RustBuffer) throws -> ConnectionState {
     return try FfiConverterTypeConnectionState.lift(buf)
 }
 
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeConnectionState_lower(_ value: ConnectionState) -> RustBuffer {
     return FfiConverterTypeConnectionState.lower(value)
 }
 
-
-
 extension ConnectionState: Equatable, Hashable {}
-
-
 
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
-/**
+/* 
  * A typed, device-local report that the library could not deliver or
  * handle a message (ADR-0026/0034). Never sent to the other Device or the
  * Relay. Observing issues is optional; the library already does the right
@@ -1689,12 +1605,10 @@ extension ConnectionState: Equatable, Hashable {}
  */
 
 public enum DeliveryIssue {
-    
     /**
      * An incoming Blob was rejected and will never reach a handler.
      */
-    case unreadable(reason: UnreadableReason
-    )
+    case unreadable(reason: UnreadableReason)
     /**
      * An authenticated-but-unacceptable control message (an over-bound
      * manifest jump, an unknown issuer, ...). Acked and dropped
@@ -1706,25 +1620,21 @@ public enum DeliveryIssue {
      * it is held unacked on the Relay (up to the cap) so an upgrade
      * recovers it (ADR-0022).
      */
-    case heldForUpgrade(version: UInt32
-    )
+    case heldForUpgrade(version: UInt32)
     /**
      * The app's message handler failed on all 5 attempts; the Blob was
      * acked and dropped (ADR-0026).
      */
-    case handlerGaveUp(messageId: String, error: String
-    )
+    case handlerGaveUp(messageId: String, error: String)
     /**
      * An outgoing message was dropped without delivery. `message_id` is
      * the ID `send()` returned.
      */
-    case sendFailed(messageId: String, reason: SendFailedReason
-    )
+    case sendFailed(messageId: String, reason: SendFailedReason)
 }
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public struct FfiConverterTypeDeliveryIssue: FfiConverterRustBuffer {
     typealias SwiftType = DeliveryIssue
@@ -1732,88 +1642,70 @@ public struct FfiConverterTypeDeliveryIssue: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DeliveryIssue {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-        
-        case 1: return .unreadable(reason: try FfiConverterTypeUnreadableReason.read(from: &buf)
-        )
-        
+        case 1: return try .unreadable(reason: FfiConverterTypeUnreadableReason.read(from: &buf))
+
         case 2: return .unauthorized
-        
-        case 3: return .heldForUpgrade(version: try FfiConverterUInt32.read(from: &buf)
-        )
-        
-        case 4: return .handlerGaveUp(messageId: try FfiConverterString.read(from: &buf), error: try FfiConverterString.read(from: &buf)
-        )
-        
-        case 5: return .sendFailed(messageId: try FfiConverterString.read(from: &buf), reason: try FfiConverterTypeSendFailedReason.read(from: &buf)
-        )
-        
+
+        case 3: return try .heldForUpgrade(version: FfiConverterUInt32.read(from: &buf))
+
+        case 4: return try .handlerGaveUp(messageId: FfiConverterString.read(from: &buf), error: FfiConverterString.read(from: &buf))
+
+        case 5: return try .sendFailed(messageId: FfiConverterString.read(from: &buf), reason: FfiConverterTypeSendFailedReason.read(from: &buf))
+
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: DeliveryIssue, into buf: inout [UInt8]) {
         switch value {
-        
-        
         case let .unreadable(reason):
             writeInt(&buf, Int32(1))
             FfiConverterTypeUnreadableReason.write(reason, into: &buf)
-            
-        
+
         case .unauthorized:
             writeInt(&buf, Int32(2))
-        
-        
+
         case let .heldForUpgrade(version):
             writeInt(&buf, Int32(3))
             FfiConverterUInt32.write(version, into: &buf)
-            
-        
-        case let .handlerGaveUp(messageId,error):
+
+        case let .handlerGaveUp(messageId, error):
             writeInt(&buf, Int32(4))
             FfiConverterString.write(messageId, into: &buf)
             FfiConverterString.write(error, into: &buf)
-            
-        
-        case let .sendFailed(messageId,reason):
+
+        case let .sendFailed(messageId, reason):
             writeInt(&buf, Int32(5))
             FfiConverterString.write(messageId, into: &buf)
             FfiConverterTypeSendFailedReason.write(reason, into: &buf)
-            
         }
     }
 }
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeDeliveryIssue_lift(_ buf: RustBuffer) throws -> DeliveryIssue {
     return try FfiConverterTypeDeliveryIssue.lift(buf)
 }
 
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeDeliveryIssue_lower(_ value: DeliveryIssue) -> RustBuffer {
     return FfiConverterTypeDeliveryIssue.lower(value)
 }
 
-
-
 extension DeliveryIssue: Equatable, Hashable {}
-
-
 
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
-/**
+/* 
  * Where the local Device stands in its namespace's Sync Group (ADR-0023,
  * ADR-0027, ADR-0028).
  */
 
 public enum GroupStatus {
-    
     /**
      * No Group Manifest and no Pending Join.
      */
@@ -1838,9 +1730,8 @@ public enum GroupStatus {
     case destroying
 }
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public struct FfiConverterTypeGroupStatus: FfiConverterRustBuffer {
     typealias SwiftType = GroupStatus
@@ -1848,69 +1739,55 @@ public struct FfiConverterTypeGroupStatus: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GroupStatus {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-        
         case 1: return .notJoined
-        
+
         case 2: return .pendingJoin
-        
+
         case 3: return .member
-        
+
         case 4: return .leaving
-        
+
         case 5: return .destroying
-        
+
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: GroupStatus, into buf: inout [UInt8]) {
         switch value {
-        
-        
         case .notJoined:
             writeInt(&buf, Int32(1))
-        
-        
+
         case .pendingJoin:
             writeInt(&buf, Int32(2))
-        
-        
+
         case .member:
             writeInt(&buf, Int32(3))
-        
-        
+
         case .leaving:
             writeInt(&buf, Int32(4))
-        
-        
+
         case .destroying:
             writeInt(&buf, Int32(5))
-        
         }
     }
 }
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeGroupStatus_lift(_ buf: RustBuffer) throws -> GroupStatus {
     return try FfiConverterTypeGroupStatus.lift(buf)
 }
 
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeGroupStatus_lower(_ value: GroupStatus) -> RustBuffer {
     return FfiConverterTypeGroupStatus.lower(value)
 }
 
-
-
 extension GroupStatus: Equatable, Hashable {}
-
-
-
 
 /**
  * Thrown by the message handler to mark a delivery attempt failed
@@ -1919,16 +1796,11 @@ extension GroupStatus: Equatable, Hashable {}
  * completes successfully.
  */
 public enum HandlerError {
-
-    
-    
-    case Failed(msg: String
-    )
+    case Failed(msg: String)
 }
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public struct FfiConverterTypeHandlerError: FfiConverterRustBuffer {
     typealias SwiftType = HandlerError
@@ -1936,33 +1808,22 @@ public struct FfiConverterTypeHandlerError: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HandlerError {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-
-        
-
-        
-        case 1: return .Failed(
-            msg: try FfiConverterString.read(from: &buf)
+        case 1: return try .Failed(
+                msg: FfiConverterString.read(from: &buf)
             )
 
-         default: throw UniffiInternalError.unexpectedEnumCase
+        default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: HandlerError, into buf: inout [UInt8]) {
         switch value {
-
-        
-
-        
-        
         case let .Failed(msg):
             writeInt(&buf, Int32(1))
             FfiConverterString.write(msg, into: &buf)
-            
         }
     }
 }
-
 
 extension HandlerError: Equatable, Hashable {}
 
@@ -1974,13 +1835,12 @@ extension HandlerError: Foundation.LocalizedError {
 
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
-/**
+/* 
  * Why the library gave up sending an outgoing message (ADR-0034 §3).
  * Every reason is permanent — the message is never retried.
  */
 
 public enum SendFailedReason {
-    
     /**
      * The entry exceeds the Protocol Size Limit (ADR-0025).
      */
@@ -1995,9 +1855,8 @@ public enum SendFailedReason {
     case expired
 }
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public struct FfiConverterTypeSendFailedReason: FfiConverterRustBuffer {
     typealias SwiftType = SendFailedReason
@@ -2005,60 +1864,49 @@ public struct FfiConverterTypeSendFailedReason: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SendFailedReason {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-        
         case 1: return .tooLarge
-        
+
         case 2: return .malformed
-        
+
         case 3: return .expired
-        
+
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: SendFailedReason, into buf: inout [UInt8]) {
         switch value {
-        
-        
         case .tooLarge:
             writeInt(&buf, Int32(1))
-        
-        
+
         case .malformed:
             writeInt(&buf, Int32(2))
-        
-        
+
         case .expired:
             writeInt(&buf, Int32(3))
-        
         }
     }
 }
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeSendFailedReason_lift(_ buf: RustBuffer) throws -> SendFailedReason {
     return try FfiConverterTypeSendFailedReason.lift(buf)
 }
 
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeSendFailedReason_lower(_ value: SendFailedReason) -> RustBuffer {
     return FfiConverterTypeSendFailedReason.lower(value)
 }
 
-
-
 extension SendFailedReason: Equatable, Hashable {}
-
-
 
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
-/**
+/* 
  * Why the status changed (ADR-0028). `statusChanged` fires only for the
  * asynchronous transitions — the ones the caller could not otherwise
  * observe; the synchronous ones (`join` → `pendingJoin`, `leave` →
@@ -2067,7 +1915,6 @@ extension SendFailedReason: Equatable, Hashable {}
  */
 
 public enum StatusReason {
-    
     /**
      * This device created the group (its admission produced the genesis
      * manifest).
@@ -2096,9 +1943,8 @@ public enum StatusReason {
     case storeReset
 }
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public struct FfiConverterTypeStatusReason: FfiConverterRustBuffer {
     typealias SwiftType = StatusReason
@@ -2106,75 +1952,60 @@ public struct FfiConverterTypeStatusReason: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> StatusReason {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-        
         case 1: return .created
-        
+
         case 2: return .joined
-        
+
         case 3: return .left
-        
+
         case 4: return .removed
-        
+
         case 5: return .destroyed
-        
+
         case 6: return .storeReset
-        
+
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: StatusReason, into buf: inout [UInt8]) {
         switch value {
-        
-        
         case .created:
             writeInt(&buf, Int32(1))
-        
-        
+
         case .joined:
             writeInt(&buf, Int32(2))
-        
-        
+
         case .left:
             writeInt(&buf, Int32(3))
-        
-        
+
         case .removed:
             writeInt(&buf, Int32(4))
-        
-        
+
         case .destroyed:
             writeInt(&buf, Int32(5))
-        
-        
+
         case .storeReset:
             writeInt(&buf, Int32(6))
-        
         }
     }
 }
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeStatusReason_lift(_ buf: RustBuffer) throws -> StatusReason {
     return try FfiConverterTypeStatusReason.lift(buf)
 }
 
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeStatusReason_lower(_ value: StatusReason) -> RustBuffer {
     return FfiConverterTypeStatusReason.lower(value)
 }
 
-
-
 extension StatusReason: Equatable, Hashable {}
-
-
-
 
 /**
  * The canonical error set (ADR-0028 as amended by ADR-0032 and SYNC-15):
@@ -2185,25 +2016,19 @@ extension StatusReason: Equatable, Hashable {}
  * check, with a test keeping that file in lockstep with this enum.
  */
 public enum TrueSealError {
-
-    
-    
     /**
      * The Relay Address string is malformed (ADR-0028). Nothing was dialed.
      */
-    case InvalidRelayAddress(msg: String
-    )
+    case InvalidRelayAddress(msg: String)
     /**
      * The namespace is empty or outside `[a-zA-Z0-9_-]+`.
      */
-    case InvalidNamespace(msg: String
-    )
+    case InvalidNamespace(msg: String)
     /**
      * A durable write failed — the operation did not commit and no
      * in-memory state changed. The caller may retry.
      */
-    case Storage(msg: String
-    )
+    case Storage(msg: String)
     /**
      * The object was closed (`close()`, ADR-0028). Every call after
      * `close()` fails with this; Session State is kept on disk.
@@ -2215,8 +2040,7 @@ public enum TrueSealError {
      * `destroying`, for example (ADR-0026/0027/0029). Carries the status
      * the call saw.
      */
-    case NotMember(status: GroupStatus
-    )
+    case NotMember(status: GroupStatus)
     /**
      * `join()` while this device already holds a Group Manifest — one
      * Sync Group per namespace (ADR-0023).
@@ -2238,8 +2062,7 @@ public enum TrueSealError {
      * The admission would exceed the Maximum Group Size (ADR-0027).
      * The Pairing Window stays open.
      */
-    case GroupFull(max: UInt32
-    )
+    case GroupFull(max: UInt32)
     /**
      * No member with that ID in the current manifest.
      */
@@ -2249,8 +2072,7 @@ public enum TrueSealError {
      * never queued and no Sequence was consumed. Permanent — a retry
      * with the same body fails the same way.
      */
-    case PayloadTooLarge(max: UInt32
-    )
+    case PayloadTooLarge(max: UInt32)
     /**
      * A second `onMessage` registration (ADR-0026: one handler).
      */
@@ -2259,8 +2081,7 @@ public enum TrueSealError {
      * The store was written by a newer release (a rollback) and is
      * refused, unmodified — upgrade the SDK (ADR-0032).
      */
-    case StoreTooNew(found: UInt32, supported: UInt32
-    )
+    case StoreTooNew(found: UInt32, supported: UInt32)
     /**
      * The group's manifest version space is exhausted (the next version
      * could never be accepted — ADR-0027, SYNC-10). The group's Devices
@@ -2270,9 +2091,8 @@ public enum TrueSealError {
     case ManifestVersionExhausted
 }
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public struct FfiConverterTypeTrueSealError: FfiConverterRustBuffer {
     typealias SwiftType = TrueSealError
@@ -2280,118 +2100,93 @@ public struct FfiConverterTypeTrueSealError: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TrueSealError {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-
-        
-
-        
-        case 1: return .InvalidRelayAddress(
-            msg: try FfiConverterString.read(from: &buf)
+        case 1: return try .InvalidRelayAddress(
+                msg: FfiConverterString.read(from: &buf)
             )
-        case 2: return .InvalidNamespace(
-            msg: try FfiConverterString.read(from: &buf)
+        case 2: return try .InvalidNamespace(
+                msg: FfiConverterString.read(from: &buf)
             )
-        case 3: return .Storage(
-            msg: try FfiConverterString.read(from: &buf)
+        case 3: return try .Storage(
+                msg: FfiConverterString.read(from: &buf)
             )
         case 4: return .Closed
-        case 5: return .NotMember(
-            status: try FfiConverterTypeGroupStatus.read(from: &buf)
+        case 5: return try .NotMember(
+                status: FfiConverterTypeGroupStatus.read(from: &buf)
             )
         case 6: return .AlreadyInGroup
         case 7: return .InvalidPairingToken
         case 8: return .PairingClosed
-        case 9: return .GroupFull(
-            max: try FfiConverterUInt32.read(from: &buf)
+        case 9: return try .GroupFull(
+                max: FfiConverterUInt32.read(from: &buf)
             )
         case 10: return .MemberNotFound
-        case 11: return .PayloadTooLarge(
-            max: try FfiConverterUInt32.read(from: &buf)
+        case 11: return try .PayloadTooLarge(
+                max: FfiConverterUInt32.read(from: &buf)
             )
         case 12: return .MessageHandlerAlreadySet
-        case 13: return .StoreTooNew(
-            found: try FfiConverterUInt32.read(from: &buf), 
-            supported: try FfiConverterUInt32.read(from: &buf)
+        case 13: return try .StoreTooNew(
+                found: FfiConverterUInt32.read(from: &buf),
+                supported: FfiConverterUInt32.read(from: &buf)
             )
         case 14: return .ManifestVersionExhausted
-
-         default: throw UniffiInternalError.unexpectedEnumCase
+        default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: TrueSealError, into buf: inout [UInt8]) {
         switch value {
-
-        
-
-        
-        
         case let .InvalidRelayAddress(msg):
             writeInt(&buf, Int32(1))
             FfiConverterString.write(msg, into: &buf)
-            
-        
+
         case let .InvalidNamespace(msg):
             writeInt(&buf, Int32(2))
             FfiConverterString.write(msg, into: &buf)
-            
-        
+
         case let .Storage(msg):
             writeInt(&buf, Int32(3))
             FfiConverterString.write(msg, into: &buf)
-            
-        
+
         case .Closed:
             writeInt(&buf, Int32(4))
-        
-        
+
         case let .NotMember(status):
             writeInt(&buf, Int32(5))
             FfiConverterTypeGroupStatus.write(status, into: &buf)
-            
-        
+
         case .AlreadyInGroup:
             writeInt(&buf, Int32(6))
-        
-        
+
         case .InvalidPairingToken:
             writeInt(&buf, Int32(7))
-        
-        
+
         case .PairingClosed:
             writeInt(&buf, Int32(8))
-        
-        
+
         case let .GroupFull(max):
             writeInt(&buf, Int32(9))
             FfiConverterUInt32.write(max, into: &buf)
-            
-        
+
         case .MemberNotFound:
             writeInt(&buf, Int32(10))
-        
-        
+
         case let .PayloadTooLarge(max):
             writeInt(&buf, Int32(11))
             FfiConverterUInt32.write(max, into: &buf)
-            
-        
+
         case .MessageHandlerAlreadySet:
             writeInt(&buf, Int32(12))
-        
-        
-        case let .StoreTooNew(found,supported):
+
+        case let .StoreTooNew(found, supported):
             writeInt(&buf, Int32(13))
             FfiConverterUInt32.write(found, into: &buf)
             FfiConverterUInt32.write(supported, into: &buf)
-            
-        
+
         case .ManifestVersionExhausted:
             writeInt(&buf, Int32(14))
-        
         }
     }
 }
-
 
 extension TrueSealError: Equatable, Hashable {}
 
@@ -2403,48 +2198,41 @@ extension TrueSealError: Foundation.LocalizedError {
 
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
-/**
+/* 
  * The single event sum type (ADR-0028, as amended by ADR-0032). Delivered
  * to every registered `onEvent` listener; events raised before the first
  * listener registers are buffered and flushed to it.
  */
 
 public enum TrueSealEvent {
-    
     /**
      * An asynchronous group-status transition (see [`StatusReason`] for
      * why synchronous transitions raise no event).
      */
-    case statusChanged(status: GroupStatus, reason: StatusReason
-    )
+    case statusChanged(status: GroupStatus, reason: StatusReason)
     /**
      * The whole current member list, not a delta (ADR-0027: membership
      * events can flicker while concurrent changes settle).
      */
-    case membersChanged(members: [Member]
-    )
+    case membersChanged(members: [Member])
     /**
      * A device requested to join inside the open Pairing Window
      * (ADR-0023).
      */
-    case joinRequest(request: JoinRequest
-    )
+    case joinRequest(request: JoinRequest)
     /**
      * The relay link transitioned.
      */
-    case connectionChanged(connection: ConnectionState
-    )
+    case connectionChanged(connection: ConnectionState)
     /**
      * A Pending Membership Change re-application was dropped
      * (ADR-0027). The joiner stays in Pending Join.
      */
-    case admissionDropped(name: String, reason: AdmissionDropReason
-    )
+    case admissionDropped(name: String, reason: AdmissionDropReason)
 }
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public struct FfiConverterTypeTrueSealEvent: FfiConverterRustBuffer {
     typealias SwiftType = TrueSealEvent
@@ -2452,89 +2240,70 @@ public struct FfiConverterTypeTrueSealEvent: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TrueSealEvent {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-        
-        case 1: return .statusChanged(status: try FfiConverterTypeGroupStatus.read(from: &buf), reason: try FfiConverterTypeStatusReason.read(from: &buf)
-        )
-        
-        case 2: return .membersChanged(members: try FfiConverterSequenceTypeMember.read(from: &buf)
-        )
-        
-        case 3: return .joinRequest(request: try FfiConverterTypeJoinRequest.read(from: &buf)
-        )
-        
-        case 4: return .connectionChanged(connection: try FfiConverterTypeConnectionState.read(from: &buf)
-        )
-        
-        case 5: return .admissionDropped(name: try FfiConverterString.read(from: &buf), reason: try FfiConverterTypeAdmissionDropReason.read(from: &buf)
-        )
-        
+        case 1: return try .statusChanged(status: FfiConverterTypeGroupStatus.read(from: &buf), reason: FfiConverterTypeStatusReason.read(from: &buf))
+
+        case 2: return try .membersChanged(members: FfiConverterSequenceTypeMember.read(from: &buf))
+
+        case 3: return try .joinRequest(request: FfiConverterTypeJoinRequest.read(from: &buf))
+
+        case 4: return try .connectionChanged(connection: FfiConverterTypeConnectionState.read(from: &buf))
+
+        case 5: return try .admissionDropped(name: FfiConverterString.read(from: &buf), reason: FfiConverterTypeAdmissionDropReason.read(from: &buf))
+
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: TrueSealEvent, into buf: inout [UInt8]) {
         switch value {
-        
-        
-        case let .statusChanged(status,reason):
+        case let .statusChanged(status, reason):
             writeInt(&buf, Int32(1))
             FfiConverterTypeGroupStatus.write(status, into: &buf)
             FfiConverterTypeStatusReason.write(reason, into: &buf)
-            
-        
+
         case let .membersChanged(members):
             writeInt(&buf, Int32(2))
             FfiConverterSequenceTypeMember.write(members, into: &buf)
-            
-        
+
         case let .joinRequest(request):
             writeInt(&buf, Int32(3))
             FfiConverterTypeJoinRequest.write(request, into: &buf)
-            
-        
+
         case let .connectionChanged(connection):
             writeInt(&buf, Int32(4))
             FfiConverterTypeConnectionState.write(connection, into: &buf)
-            
-        
-        case let .admissionDropped(name,reason):
+
+        case let .admissionDropped(name, reason):
             writeInt(&buf, Int32(5))
             FfiConverterString.write(name, into: &buf)
             FfiConverterTypeAdmissionDropReason.write(reason, into: &buf)
-            
         }
     }
 }
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeTrueSealEvent_lift(_ buf: RustBuffer) throws -> TrueSealEvent {
     return try FfiConverterTypeTrueSealEvent.lift(buf)
 }
 
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeTrueSealEvent_lower(_ value: TrueSealEvent) -> RustBuffer {
     return FfiConverterTypeTrueSealEvent.lower(value)
 }
 
-
-
 extension TrueSealEvent: Equatable, Hashable {}
-
-
 
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
-/**
+/* 
  * Why an incoming Blob was rejected as unreadable (ADR-0034 §3).
  */
 
 public enum UnreadableReason {
-    
     /**
      * Undecodable or unauthenticated bytes — including the refused
      * pre-version format.
@@ -2557,9 +2326,8 @@ public enum UnreadableReason {
     case droppedWhileHeld
 }
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public struct FfiConverterTypeUnreadableReason: FfiConverterRustBuffer {
     typealias SwiftType = UnreadableReason
@@ -2567,106 +2335,87 @@ public struct FfiConverterTypeUnreadableReason: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UnreadableReason {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-        
         case 1: return .malformed
-        
+
         case 2: return .senderOutdated
-        
+
         case 3: return .expired
-        
+
         case 4: return .droppedWhileHeld
-        
+
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: UnreadableReason, into buf: inout [UInt8]) {
         switch value {
-        
-        
         case .malformed:
             writeInt(&buf, Int32(1))
-        
-        
+
         case .senderOutdated:
             writeInt(&buf, Int32(2))
-        
-        
+
         case .expired:
             writeInt(&buf, Int32(3))
-        
-        
+
         case .droppedWhileHeld:
             writeInt(&buf, Int32(4))
-        
         }
     }
 }
 
-
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeUnreadableReason_lift(_ buf: RustBuffer) throws -> UnreadableReason {
     return try FfiConverterTypeUnreadableReason.lift(buf)
 }
 
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
 public func FfiConverterTypeUnreadableReason_lower(_ value: UnreadableReason) -> RustBuffer {
     return FfiConverterTypeUnreadableReason.lower(value)
 }
 
-
-
 extension UnreadableReason: Equatable, Hashable {}
-
-
-
-
-
 
 /**
  * Receives [`TrueSealEvent`]s (ADR-0028). Any number of listeners.
  */
-public protocol TrueSealEventListener : AnyObject {
-    
-    func onEvent(event: TrueSealEvent) 
-    
+public protocol TrueSealEventListener: AnyObject {
+    func onEvent(event: TrueSealEvent)
 }
 
-// Magic number for the Rust proxy to call using the same mechanism as every other method,
-// to free the callback once it's dropped by Rust.
+/// Magic number for the Rust proxy to call using the same mechanism as every other method,
+/// to free the callback once it's dropped by Rust.
 private let IDX_CALLBACK_FREE: Int32 = 0
 // Callback return codes
 private let UNIFFI_CALLBACK_SUCCESS: Int32 = 0
 private let UNIFFI_CALLBACK_ERROR: Int32 = 1
 private let UNIFFI_CALLBACK_UNEXPECTED_ERROR: Int32 = 2
 
-// Put the implementation in a struct so we don't pollute the top-level namespace
-fileprivate struct UniffiCallbackInterfaceTrueSealEventListener {
-
-    // Create the VTable using a series of closures.
-    // Swift automatically converts these into C callback functions.
-    static var vtable: UniffiVTableCallbackInterfaceTrueSealEventListener = UniffiVTableCallbackInterfaceTrueSealEventListener(
+/// Put the implementation in a struct so we don't pollute the top-level namespace
+private enum UniffiCallbackInterfaceTrueSealEventListener {
+    /// Create the VTable using a series of closures.
+    /// Swift automatically converts these into C callback functions.
+    static var vtable: UniffiVTableCallbackInterfaceTrueSealEventListener = .init(
         onEvent: { (
             uniffiHandle: UInt64,
             event: RustBuffer,
-            uniffiOutReturn: UnsafeMutableRawPointer,
+            _: UnsafeMutableRawPointer,
             uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
         ) in
             let makeCall = {
-                () throws -> () in
+                () throws in
                 guard let uniffiObj = try? FfiConverterCallbackInterfaceTrueSealEventListener.handleMap.get(handle: uniffiHandle) else {
                     throw UniffiInternalError.unexpectedStaleHandle
                 }
-                return uniffiObj.onEvent(
-                     event: try FfiConverterTypeTrueSealEvent.lift(event)
+                return try uniffiObj.onEvent(
+                    event: FfiConverterTypeTrueSealEvent.lift(event)
                 )
             }
 
-            
             let writeReturn = { () }
             uniffiTraitInterfaceCall(
                 callStatus: uniffiCallStatus,
@@ -2674,7 +2423,7 @@ fileprivate struct UniffiCallbackInterfaceTrueSealEventListener {
                 writeReturn: writeReturn
             )
         },
-        uniffiFree: { (uniffiHandle: UInt64) -> () in
+        uniffiFree: { (uniffiHandle: UInt64) in
             let result = try? FfiConverterCallbackInterfaceTrueSealEventListener.handleMap.remove(handle: uniffiHandle)
             if result == nil {
                 print("Uniffi callback interface TrueSealEventListener: handle missing in uniffiFree")
@@ -2689,87 +2438,78 @@ private func uniffiCallbackInitTrueSealEventListener() {
 
 // FfiConverter protocol for callback interfaces
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterCallbackInterfaceTrueSealEventListener {
+private enum FfiConverterCallbackInterfaceTrueSealEventListener {
     fileprivate static var handleMap = UniffiHandleMap<TrueSealEventListener>()
 }
 
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
-extension FfiConverterCallbackInterfaceTrueSealEventListener : FfiConverter {
+extension FfiConverterCallbackInterfaceTrueSealEventListener: FfiConverter {
     typealias SwiftType = TrueSealEventListener
     typealias FfiType = UInt64
 
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
+    #if swift(>=5.8)
+        @_documentation(visibility: private)
+    #endif
     public static func lift(_ handle: UInt64) throws -> SwiftType {
         try handleMap.get(handle: handle)
     }
 
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
+    #if swift(>=5.8)
+        @_documentation(visibility: private)
+    #endif
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
         let handle: UInt64 = try readInt(&buf)
         return try lift(handle)
     }
 
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
+    #if swift(>=5.8)
+        @_documentation(visibility: private)
+    #endif
     public static func lower(_ v: SwiftType) -> UInt64 {
         return handleMap.insert(obj: v)
     }
 
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
+    #if swift(>=5.8)
+        @_documentation(visibility: private)
+    #endif
     public static func write(_ v: SwiftType, into buf: inout [UInt8]) {
         writeInt(&buf, lower(v))
     }
 }
 
-
-
-
 /**
  * Receives [`DeliveryIssue`]s (ADR-0026). Any number of listeners;
  * optional — the library already does the right thing.
  */
-public protocol TrueSealIssueListener : AnyObject {
-    
-    func onDeliveryIssue(issue: DeliveryIssue) 
-    
+public protocol TrueSealIssueListener: AnyObject {
+    func onDeliveryIssue(issue: DeliveryIssue)
 }
 
-
-
-// Put the implementation in a struct so we don't pollute the top-level namespace
-fileprivate struct UniffiCallbackInterfaceTrueSealIssueListener {
-
-    // Create the VTable using a series of closures.
-    // Swift automatically converts these into C callback functions.
-    static var vtable: UniffiVTableCallbackInterfaceTrueSealIssueListener = UniffiVTableCallbackInterfaceTrueSealIssueListener(
+/// Put the implementation in a struct so we don't pollute the top-level namespace
+private enum UniffiCallbackInterfaceTrueSealIssueListener {
+    /// Create the VTable using a series of closures.
+    /// Swift automatically converts these into C callback functions.
+    static var vtable: UniffiVTableCallbackInterfaceTrueSealIssueListener = .init(
         onDeliveryIssue: { (
             uniffiHandle: UInt64,
             issue: RustBuffer,
-            uniffiOutReturn: UnsafeMutableRawPointer,
+            _: UnsafeMutableRawPointer,
             uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
         ) in
             let makeCall = {
-                () throws -> () in
+                () throws in
                 guard let uniffiObj = try? FfiConverterCallbackInterfaceTrueSealIssueListener.handleMap.get(handle: uniffiHandle) else {
                     throw UniffiInternalError.unexpectedStaleHandle
                 }
-                return uniffiObj.onDeliveryIssue(
-                     issue: try FfiConverterTypeDeliveryIssue.lift(issue)
+                return try uniffiObj.onDeliveryIssue(
+                    issue: FfiConverterTypeDeliveryIssue.lift(issue)
                 )
             }
 
-            
             let writeReturn = { () }
             uniffiTraitInterfaceCall(
                 callStatus: uniffiCallStatus,
@@ -2777,7 +2517,7 @@ fileprivate struct UniffiCallbackInterfaceTrueSealIssueListener {
                 writeReturn: writeReturn
             )
         },
-        uniffiFree: { (uniffiHandle: UInt64) -> () in
+        uniffiFree: { (uniffiHandle: UInt64) in
             let result = try? FfiConverterCallbackInterfaceTrueSealIssueListener.handleMap.remove(handle: uniffiHandle)
             if result == nil {
                 print("Uniffi callback interface TrueSealIssueListener: handle missing in uniffiFree")
@@ -2792,71 +2532,63 @@ private func uniffiCallbackInitTrueSealIssueListener() {
 
 // FfiConverter protocol for callback interfaces
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterCallbackInterfaceTrueSealIssueListener {
+private enum FfiConverterCallbackInterfaceTrueSealIssueListener {
     fileprivate static var handleMap = UniffiHandleMap<TrueSealIssueListener>()
 }
 
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
-extension FfiConverterCallbackInterfaceTrueSealIssueListener : FfiConverter {
+extension FfiConverterCallbackInterfaceTrueSealIssueListener: FfiConverter {
     typealias SwiftType = TrueSealIssueListener
     typealias FfiType = UInt64
 
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
+    #if swift(>=5.8)
+        @_documentation(visibility: private)
+    #endif
     public static func lift(_ handle: UInt64) throws -> SwiftType {
         try handleMap.get(handle: handle)
     }
 
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
+    #if swift(>=5.8)
+        @_documentation(visibility: private)
+    #endif
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
         let handle: UInt64 = try readInt(&buf)
         return try lift(handle)
     }
 
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
+    #if swift(>=5.8)
+        @_documentation(visibility: private)
+    #endif
     public static func lower(_ v: SwiftType) -> UInt64 {
         return handleMap.insert(obj: v)
     }
 
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
+    #if swift(>=5.8)
+        @_documentation(visibility: private)
+    #endif
     public static func write(_ v: SwiftType, into buf: inout [UInt8]) {
         writeInt(&buf, lower(v))
     }
 }
-
-
-
 
 /**
  * THE message handler (ADR-0026/0028): one per object; registering it
  * starts receiving. Async and awaited — the DeliverAck leaves the device
  * only after it completes.
  */
-public protocol TrueSealMessageHandler : AnyObject {
-    
-    func onMessage(message: TrueSealMessage) async throws 
-    
+public protocol TrueSealMessageHandler: AnyObject {
+    func onMessage(message: TrueSealMessage) async throws
 }
 
-
-
-// Put the implementation in a struct so we don't pollute the top-level namespace
-fileprivate struct UniffiCallbackInterfaceTrueSealMessageHandler {
-
-    // Create the VTable using a series of closures.
-    // Swift automatically converts these into C callback functions.
-    static var vtable: UniffiVTableCallbackInterfaceTrueSealMessageHandler = UniffiVTableCallbackInterfaceTrueSealMessageHandler(
+/// Put the implementation in a struct so we don't pollute the top-level namespace
+private enum UniffiCallbackInterfaceTrueSealMessageHandler {
+    /// Create the VTable using a series of closures.
+    /// Swift automatically converts these into C callback functions.
+    static var vtable: UniffiVTableCallbackInterfaceTrueSealMessageHandler = .init(
         onMessage: { (
             uniffiHandle: UInt64,
             message: RustBuffer,
@@ -2865,16 +2597,16 @@ fileprivate struct UniffiCallbackInterfaceTrueSealMessageHandler {
             uniffiOutReturn: UnsafeMutablePointer<UniffiForeignFuture>
         ) in
             let makeCall = {
-                () async throws -> () in
+                () async throws in
                 guard let uniffiObj = try? FfiConverterCallbackInterfaceTrueSealMessageHandler.handleMap.get(handle: uniffiHandle) else {
                     throw UniffiInternalError.unexpectedStaleHandle
                 }
                 return try await uniffiObj.onMessage(
-                     message: try FfiConverterTypeTrueSealMessage.lift(message)
+                    message: FfiConverterTypeTrueSealMessage.lift(message)
                 )
             }
 
-            let uniffiHandleSuccess = { (returnValue: ()) in
+            let uniffiHandleSuccess = { (_: ()) in
                 uniffiFutureCallback(
                     uniffiCallbackData,
                     UniffiForeignFutureStructVoid(
@@ -2882,7 +2614,7 @@ fileprivate struct UniffiCallbackInterfaceTrueSealMessageHandler {
                     )
                 )
             }
-            let uniffiHandleError = { (statusCode, errorBuf) in
+            let uniffiHandleError = { statusCode, errorBuf in
                 uniffiFutureCallback(
                     uniffiCallbackData,
                     UniffiForeignFutureStructVoid(
@@ -2898,7 +2630,7 @@ fileprivate struct UniffiCallbackInterfaceTrueSealMessageHandler {
             )
             uniffiOutReturn.pointee = uniffiForeignFuture
         },
-        uniffiFree: { (uniffiHandle: UInt64) -> () in
+        uniffiFree: { (uniffiHandle: UInt64) in
             let result = try? FfiConverterCallbackInterfaceTrueSealMessageHandler.handleMap.remove(handle: uniffiHandle)
             if result == nil {
                 print("Uniffi callback interface TrueSealMessageHandler: handle missing in uniffiFree")
@@ -2913,56 +2645,56 @@ private func uniffiCallbackInitTrueSealMessageHandler() {
 
 // FfiConverter protocol for callback interfaces
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterCallbackInterfaceTrueSealMessageHandler {
+private enum FfiConverterCallbackInterfaceTrueSealMessageHandler {
     fileprivate static var handleMap = UniffiHandleMap<TrueSealMessageHandler>()
 }
 
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
-extension FfiConverterCallbackInterfaceTrueSealMessageHandler : FfiConverter {
+extension FfiConverterCallbackInterfaceTrueSealMessageHandler: FfiConverter {
     typealias SwiftType = TrueSealMessageHandler
     typealias FfiType = UInt64
 
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
+    #if swift(>=5.8)
+        @_documentation(visibility: private)
+    #endif
     public static func lift(_ handle: UInt64) throws -> SwiftType {
         try handleMap.get(handle: handle)
     }
 
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
+    #if swift(>=5.8)
+        @_documentation(visibility: private)
+    #endif
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
         let handle: UInt64 = try readInt(&buf)
         return try lift(handle)
     }
 
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
+    #if swift(>=5.8)
+        @_documentation(visibility: private)
+    #endif
     public static func lower(_ v: SwiftType) -> UInt64 {
         return handleMap.insert(obj: v)
     }
 
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
+    #if swift(>=5.8)
+        @_documentation(visibility: private)
+    #endif
     public static func write(_ v: SwiftType, into buf: inout [UInt8]) {
         writeInt(&buf, lower(v))
     }
 }
 
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterOptionUInt32: FfiConverterRustBuffer {
+private struct FfiConverterOptionUInt32: FfiConverterRustBuffer {
     typealias SwiftType = UInt32?
 
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+    static func write(_ value: SwiftType, into buf: inout [UInt8]) {
         guard let value = value else {
             writeInt(&buf, Int8(0))
             return
@@ -2971,7 +2703,7 @@ fileprivate struct FfiConverterOptionUInt32: FfiConverterRustBuffer {
         FfiConverterUInt32.write(value, into: &buf)
     }
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterUInt32.read(from: &buf)
@@ -2981,12 +2713,12 @@ fileprivate struct FfiConverterOptionUInt32: FfiConverterRustBuffer {
 }
 
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
+private struct FfiConverterOptionString: FfiConverterRustBuffer {
     typealias SwiftType = String?
 
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+    static func write(_ value: SwiftType, into buf: inout [UInt8]) {
         guard let value = value else {
             writeInt(&buf, Int8(0))
             return
@@ -2995,7 +2727,7 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
         FfiConverterString.write(value, into: &buf)
     }
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterString.read(from: &buf)
@@ -3005,12 +2737,12 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
 }
 
 #if swift(>=5.8)
-@_documentation(visibility: private)
+    @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterSequenceTypeMember: FfiConverterRustBuffer {
+private struct FfiConverterSequenceTypeMember: FfiConverterRustBuffer {
     typealias SwiftType = [Member]
 
-    public static func write(_ value: [Member], into buf: inout [UInt8]) {
+    static func write(_ value: [Member], into buf: inout [UInt8]) {
         let len = Int32(value.count)
         writeInt(&buf, len)
         for item in value {
@@ -3018,26 +2750,27 @@ fileprivate struct FfiConverterSequenceTypeMember: FfiConverterRustBuffer {
         }
     }
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Member] {
+    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Member] {
         let len: Int32 = try readInt(&buf)
         var seq = [Member]()
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
-            seq.append(try FfiConverterTypeMember.read(from: &buf))
+            try seq.append(FfiConverterTypeMember.read(from: &buf))
         }
         return seq
     }
 }
+
 private let UNIFFI_RUST_FUTURE_POLL_READY: Int8 = 0
 private let UNIFFI_RUST_FUTURE_POLL_MAYBE_READY: Int8 = 1
 
-fileprivate let uniffiContinuationHandleMap = UniffiHandleMap<UnsafeContinuation<Int8, Never>>()
+private let uniffiContinuationHandleMap = UniffiHandleMap<UnsafeContinuation<Int8, Never>>()
 
-fileprivate func uniffiRustCallAsync<F, T>(
+private func uniffiRustCallAsync<F, T>(
     rustFutureFunc: () -> UInt64,
-    pollFunc: (UInt64, @escaping UniffiRustFutureContinuationCallback, UInt64) -> (),
+    pollFunc: (UInt64, @escaping UniffiRustFutureContinuationCallback, UInt64) -> Void,
     completeFunc: (UInt64, UnsafeMutablePointer<RustCallStatus>) -> F,
-    freeFunc: (UInt64) -> (),
+    freeFunc: (UInt64) -> Void,
     liftFunc: (F) throws -> T,
     errorHandler: ((RustBuffer) throws -> Swift.Error)?
 ) async throws -> T {
@@ -3048,7 +2781,7 @@ fileprivate func uniffiRustCallAsync<F, T>(
     defer {
         freeFunc(rustFuture)
     }
-    var pollResult: Int8;
+    var pollResult: Int8
     repeat {
         pollResult = await withUnsafeContinuation {
             pollFunc(
@@ -3065,41 +2798,41 @@ fileprivate func uniffiRustCallAsync<F, T>(
     ))
 }
 
-// Callback handlers for an async calls.  These are invoked by Rust when the future is ready.  They
-// lift the return value or error and resume the suspended function.
-fileprivate func uniffiFutureContinuationCallback(handle: UInt64, pollResult: Int8) {
+/// Callback handlers for an async calls.  These are invoked by Rust when the future is ready.  They
+/// lift the return value or error and resume the suspended function.
+private func uniffiFutureContinuationCallback(handle: UInt64, pollResult: Int8) {
     if let continuation = try? uniffiContinuationHandleMap.remove(handle: handle) {
         continuation.resume(returning: pollResult)
     } else {
         print("uniffiFutureContinuationCallback invalid handle")
     }
 }
+
 private func uniffiTraitInterfaceCallAsync<T>(
     makeCall: @escaping () async throws -> T,
-    handleSuccess: @escaping (T) -> (),
-    handleError: @escaping (Int8, RustBuffer) -> ()
+    handleSuccess: @escaping (T) -> Void,
+    handleError: @escaping (Int8, RustBuffer) -> Void
 ) -> UniffiForeignFuture {
     let task = Task {
         do {
-            handleSuccess(try await makeCall())
+            try handleSuccess(await makeCall())
         } catch {
             handleError(CALL_UNEXPECTED_ERROR, FfiConverterString.lower(String(describing: error)))
         }
     }
     let handle = UNIFFI_FOREIGN_FUTURE_HANDLE_MAP.insert(obj: task)
     return UniffiForeignFuture(handle: handle, free: uniffiForeignFutureFree)
-
 }
 
 private func uniffiTraitInterfaceCallAsyncWithError<T, E>(
     makeCall: @escaping () async throws -> T,
-    handleSuccess: @escaping (T) -> (),
-    handleError: @escaping (Int8, RustBuffer) -> (),
+    handleSuccess: @escaping (T) -> Void,
+    handleError: @escaping (Int8, RustBuffer) -> Void,
     lowerError: @escaping (E) -> RustBuffer
 ) -> UniffiForeignFuture {
     let task = Task {
         do {
-            handleSuccess(try await makeCall())
+            try handleSuccess(await makeCall())
         } catch let error as E {
             handleError(CALL_ERROR, lowerError(error))
         } catch {
@@ -3112,12 +2845,12 @@ private func uniffiTraitInterfaceCallAsyncWithError<T, E>(
 
 // Borrow the callback handle map implementation to store foreign future handles
 // TODO: consolidate the handle-map code (https://github.com/mozilla/uniffi-rs/pull/1823)
-fileprivate var UNIFFI_FOREIGN_FUTURE_HANDLE_MAP = UniffiHandleMap<UniffiForeignFutureTask>()
+private var UNIFFI_FOREIGN_FUTURE_HANDLE_MAP = UniffiHandleMap<UniffiForeignFutureTask>()
 
-// Protocol for tasks that handle foreign futures.
-//
-// Defining a protocol allows all tasks to be stored in the same handle map.  This can't be done
-// with the task object itself, since has generic parameters.
+/// Protocol for tasks that handle foreign futures.
+///
+/// Defining a protocol allows all tasks to be stored in the same handle map.  This can't be done
+/// with the task object itself, since has generic parameters.
 protocol UniffiForeignFutureTask {
     func cancel()
 }
@@ -3136,51 +2869,52 @@ private func uniffiForeignFutureFree(handle: UInt64) {
     }
 }
 
-// For testing
+/// For testing
 public func uniffiForeignFutureHandleCountTruesealSync() -> Int {
     UNIFFI_FOREIGN_FUTURE_HANDLE_MAP.count
 }
+
 /**
  * The version triple for this build (ADR-0022 Reporting): the two
  * protocol versions come from the core constants — the single source of
  * truth. Package versions imply nothing about wire compatibility.
  */
 public func truesealInfo() -> TruesealInfo {
-    return try!  FfiConverterTypeTruesealInfo.lift(try! rustCall() {
-    uniffi_trueseal_sync_fn_func_trueseal_info($0
-    )
-})
+    return try! FfiConverterTypeTruesealInfo.lift(try! rustCall {
+        uniffi_trueseal_sync_fn_func_trueseal_info($0)
+    })
 }
+
 /**
  * The Maximum Group Size (32, ADR-0027). `maxGroupSize` in the canonical
  * API.
  */
 public func truesealMaxGroupSize() -> UInt32 {
-    return try!  FfiConverterUInt32.lift(try! rustCall() {
-    uniffi_trueseal_sync_fn_func_trueseal_max_group_size($0
-    )
-})
+    return try! FfiConverterUInt32.lift(try! rustCall {
+        uniffi_trueseal_sync_fn_func_trueseal_max_group_size($0)
+    })
 }
+
 /**
  * The Protocol Size Limit (61,440 bytes, ADR-0025): the largest `Sync`
  * body any device may send. `maxPayloadBytes` in the canonical API.
  */
 public func truesealMaxPayloadBytes() -> UInt32 {
-    return try!  FfiConverterUInt32.lift(try! rustCall() {
-    uniffi_trueseal_sync_fn_func_trueseal_max_payload_bytes($0
-    )
-})
+    return try! FfiConverterUInt32.lift(try! rustCall {
+        uniffi_trueseal_sync_fn_func_trueseal_max_payload_bytes($0)
+    })
 }
+
 /**
  * Parse a Relay Address string into its typed form (ADR-0028), so SDKs
  * can validate or display one without opening a session.
  */
-public func truesealParseRelayAddress(input: String)throws  -> RelayAddress {
-    return try  FfiConverterTypeRelayAddress.lift(try rustCallWithError(FfiConverterTypeTrueSealError.lift) {
-    uniffi_trueseal_sync_fn_func_trueseal_parse_relay_address(
-        FfiConverterString.lower(input),$0
-    )
-})
+public func truesealParseRelayAddress(input: String) throws -> RelayAddress {
+    return try FfiConverterTypeRelayAddress.lift(rustCallWithError(FfiConverterTypeTrueSealError.lift) {
+        uniffi_trueseal_sync_fn_func_trueseal_parse_relay_address(
+            FfiConverterString.lower(input), $0
+        )
+    })
 }
 
 private enum InitializationResult {
@@ -3188,8 +2922,9 @@ private enum InitializationResult {
     case contractVersionMismatch
     case apiChecksumMismatch
 }
-// Use a global variable to perform the versioning checks. Swift ensures that
-// the code inside is only computed once.
+
+/// Use a global variable to perform the versioning checks. Swift ensures that
+/// the code inside is only computed once.
 private var initializationResult: InitializationResult = {
     // Get the bindings contract version from our ComponentInterface
     let bindings_contract_version = 26
@@ -3198,85 +2933,85 @@ private var initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_trueseal_sync_checksum_func_trueseal_info() != 52754) {
+    if uniffi_trueseal_sync_checksum_func_trueseal_info() != 52754 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_trueseal_sync_checksum_func_trueseal_max_group_size() != 31883) {
+    if uniffi_trueseal_sync_checksum_func_trueseal_max_group_size() != 31883 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_trueseal_sync_checksum_func_trueseal_max_payload_bytes() != 12376) {
+    if uniffi_trueseal_sync_checksum_func_trueseal_max_payload_bytes() != 12376 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_trueseal_sync_checksum_func_trueseal_parse_relay_address() != 1068) {
+    if uniffi_trueseal_sync_checksum_func_trueseal_parse_relay_address() != 1068 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_trueseal_sync_checksum_method_subscription_cancel() != 4568) {
+    if uniffi_trueseal_sync_checksum_method_subscription_cancel() != 4568 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_trueseal_sync_checksum_method_trueseal_accept() != 33042) {
+    if uniffi_trueseal_sync_checksum_method_trueseal_accept() != 33042 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_trueseal_sync_checksum_method_trueseal_cancel_join() != 4115) {
+    if uniffi_trueseal_sync_checksum_method_trueseal_cancel_join() != 4115 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_trueseal_sync_checksum_method_trueseal_cancel_pairing() != 62707) {
+    if uniffi_trueseal_sync_checksum_method_trueseal_cancel_pairing() != 62707 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_trueseal_sync_checksum_method_trueseal_close() != 6598) {
+    if uniffi_trueseal_sync_checksum_method_trueseal_close() != 6598 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_trueseal_sync_checksum_method_trueseal_connection() != 35458) {
+    if uniffi_trueseal_sync_checksum_method_trueseal_connection() != 35458 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_trueseal_sync_checksum_method_trueseal_destroy_group() != 7511) {
+    if uniffi_trueseal_sync_checksum_method_trueseal_destroy_group() != 7511 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_trueseal_sync_checksum_method_trueseal_join() != 55880) {
+    if uniffi_trueseal_sync_checksum_method_trueseal_join() != 55880 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_trueseal_sync_checksum_method_trueseal_leave() != 40867) {
+    if uniffi_trueseal_sync_checksum_method_trueseal_leave() != 40867 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_trueseal_sync_checksum_method_trueseal_me() != 36322) {
+    if uniffi_trueseal_sync_checksum_method_trueseal_me() != 36322 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_trueseal_sync_checksum_method_trueseal_members() != 49607) {
+    if uniffi_trueseal_sync_checksum_method_trueseal_members() != 49607 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_trueseal_sync_checksum_method_trueseal_on_delivery_issue() != 62324) {
+    if uniffi_trueseal_sync_checksum_method_trueseal_on_delivery_issue() != 62324 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_trueseal_sync_checksum_method_trueseal_on_event() != 4175) {
+    if uniffi_trueseal_sync_checksum_method_trueseal_on_event() != 4175 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_trueseal_sync_checksum_method_trueseal_on_message() != 64154) {
+    if uniffi_trueseal_sync_checksum_method_trueseal_on_message() != 64154 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_trueseal_sync_checksum_method_trueseal_remove() != 62714) {
+    if uniffi_trueseal_sync_checksum_method_trueseal_remove() != 62714 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_trueseal_sync_checksum_method_trueseal_send() != 35375) {
+    if uniffi_trueseal_sync_checksum_method_trueseal_send() != 35375 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_trueseal_sync_checksum_method_trueseal_start_pairing() != 57465) {
+    if uniffi_trueseal_sync_checksum_method_trueseal_start_pairing() != 57465 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_trueseal_sync_checksum_method_trueseal_status() != 18168) {
+    if uniffi_trueseal_sync_checksum_method_trueseal_status() != 18168 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_trueseal_sync_checksum_constructor_trueseal_open() != 60496) {
+    if uniffi_trueseal_sync_checksum_constructor_trueseal_open() != 60496 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_trueseal_sync_checksum_constructor_trueseal_open_with_address() != 58992) {
+    if uniffi_trueseal_sync_checksum_constructor_trueseal_open_with_address() != 58992 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_trueseal_sync_checksum_method_truesealeventlistener_on_event() != 35991) {
+    if uniffi_trueseal_sync_checksum_method_truesealeventlistener_on_event() != 35991 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_trueseal_sync_checksum_method_truesealissuelistener_on_delivery_issue() != 17250) {
+    if uniffi_trueseal_sync_checksum_method_truesealissuelistener_on_delivery_issue() != 17250 {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_trueseal_sync_checksum_method_truesealmessagehandler_on_message() != 56735) {
+    if uniffi_trueseal_sync_checksum_method_truesealmessagehandler_on_message() != 56735 {
         return InitializationResult.apiChecksumMismatch
     }
 
