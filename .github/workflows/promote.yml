@@ -67,9 +67,11 @@ jobs:
       # move it; stop and let a human untangle.
       - name: Refuse to touch an existing tag
         if: steps.staged.outputs.is_draft == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="v${{ inputs.version }}"
-          if git ls-remote --tags "https://github.com/${{ github.repository }}.git" "$TAG" | grep -q "$TAG"; then
+          if gh api "repos/${{ github.repository }}/git/refs/tags/$TAG" >/dev/null 2>&1; then
             echo "FAIL: tag $TAG already exists on origin but the release is still a draft — tags are never moved; investigate by hand" >&2
             exit 1
           fi
@@ -126,14 +128,9 @@ jobs:
           cat > /tmp/release-notes.md <<EOF
           TrueSeal $VERSION — Swift SDK (lockstep release).
 
-          Changelog: the [TrueSeal $VERSION section](https://github.com/julianbonomini/trueseal-sync/blob/main/CHANGELOG.md)
-          of the one lockstep changelog, subsection **trueseal-sync-swift**
-          (e2e ADR-0002: one changelog per TrueSeal Release, linked from every
-          release in the group; breaking releases carry upgrade steps there).
+          Changelog: the TrueSeal $VERSION section of the [one lockstep changelog](https://github.com/julianbonomini/trueseal-sync/blob/main/CHANGELOG.md), subsection **trueseal-sync-swift** (e2e ADR-0002: one changelog per TrueSeal Release, linked from every release in the group; breaking releases carry upgrade steps there).
 
-          Install: SwiftPM \`binaryTarget\` on the tag \`$TAG\` (immutable —
-          ADR-0030). This is a Developer Preview: any 0.x release may break
-          the API, the wire format or stored data without notice (ADR-0033).
+          Install: SwiftPM \`binaryTarget\` on the tag \`$TAG\` (immutable — ADR-0030). This is a Developer Preview: any 0.x release may break the API, the wire format or stored data without notice (ADR-0033).
 
           - core: trueseal-sync $TAG (checksum-pinned at candidate time)
           - TruesealSyncFFI.xcframework.zip sha256: \`$STAMPED\`
