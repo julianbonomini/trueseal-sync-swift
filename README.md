@@ -1,8 +1,16 @@
 # trueseal-sync-swift
 
-Swift SDK for [trueseal-sync](https://github.com/julianbonomini/trueseal-sync) — E2EE, local-first sync between devices. No accounts. No server that can read your data.
+> **Developer Preview.** Every package is `0.x` and openly allowed to break — the API,
+> the wire format and stored data may change without notice. Each breaking release
+> carries upgrade steps. See the
+> [preview lifecycle](https://trueseal.dev/agents/developer-preview).
 
-Wraps the Rust core via UniFFI. The public surface is pure Swift — no FFI types, no Noise Protocol, no raw pointers.
+The Swift SDK for [TrueSeal](https://trueseal.dev) — end-to-end encrypted, local-first
+sync between a group of devices. No accounts. The relay can't read or forge messages;
+[here is exactly what it does see](https://trueseal.dev/agents/threat-model).
+
+Pure-Swift surface over the Rust core ([trueseal-sync](https://github.com/julianbonomini/trueseal-sync))
+— no FFI types, no Noise Protocol, no raw pointers.
 
 **Platforms:** macOS 14+ · iOS 17+ · Swift 5.9+ / Xcode 15+
 
@@ -12,18 +20,21 @@ Wraps the Rust core via UniFFI. The public surface is pure Swift — no FFI type
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/julianbonomini/trueseal-sync-swift", from: "0.1.0")
+.package(url: "https://github.com/julianbonomini/trueseal-sync-swift", from: "0.6.0")
 ```
 
-No Rust toolchain needed. A pre-built XCFramework ships with every [release](https://github.com/julianbonomini/trueseal-sync-swift/releases) and SPM downloads it automatically.
+No Rust toolchain needed. A pre-built XCFramework ships with every
+[release](https://github.com/julianbonomini/trueseal-sync-swift/releases) and SPM
+downloads it automatically.
 
 ---
 
-## Usage
+## Open
 
-### Init
-
-You need a relay — a server that routes encrypted blobs between devices. The relay never sees plaintext; it only forwards ciphertext it can't decrypt.
+You need a relay — a server that routes encrypted blobs between devices. One Relay
+Address string carries its key, host and both ports; the relay CLI prints it
+(`trueseal-relay address --host relay.example.com`). To run one, see
+[self-hosting](https://trueseal.dev/agents/running-a-relay).
 
 ```swift
 import TruesealSync
@@ -36,9 +47,10 @@ let ts = try await TrueSeal.open(
 )
 ```
 
-One Relay Address string carries the key, host and both ports — the relay CLI prints it (`trueseal-relay address --host relay.example.com`). Session State lives under `storage` (excluded from backups; protected by the OS sandbox). `open` returns before the connection is up — the outbox queues and replays once the relay is reachable.
-
-State is `@Observable` for SwiftUI: `ts.status`, `ts.me`, `ts.members`, `ts.connection`.
+Session State lives under `storage` (excluded from backups; data at rest is protected
+by the OS sandbox). `open` returns before the connection is up — the outbox queues and
+replays once the relay is reachable. State is `@Observable` for SwiftUI: `ts.status`,
+`ts.me`, `ts.members`, `ts.connection`.
 
 > **Required entitlement.** Without this, the relay connection silently fails:
 > ```xml
@@ -50,17 +62,22 @@ State is `@Observable` for SwiftUI: `ts.status`, `ts.me`, `ts.members`, `ts.conn
 
 ---
 
-### Pair two devices
+## Pair two devices
 
-Devices sync within a group — a set of mutually-trusted devices. You bootstrap the group by pairing. One device opens a window and hands over a token; the other joins with it; the first accepts.
+Devices sync within a group. You bootstrap the group by pairing: one device opens a
+window and hands over a token; the other joins with it; the first accepts. The token
+carries a single-use secret — it does not expire on a timer; the window closes when
+the device cancels it or accepts a join.
 
-**Device A** — open the pairing window and get a token (show it as a QR code, send via AirDrop, etc.):
+**Device A** — open the pairing window and get a token (show it as a QR code, send via
+AirDrop, etc.):
 
 ```swift
 let token = try tsA.startPairing()
 ```
 
-**Device B** — join with the token (status becomes `pendingJoin` until the first manifest arrives):
+**Device B** — join with the token (status becomes `pendingJoin` until the first
+manifest arrives):
 
 ```swift
 try tsB.join(token: token)
@@ -81,7 +98,7 @@ After `accept`, both devices are members and can send and receive.
 
 ---
 
-### Send & receive
+## Send & receive
 
 ```swift
 // Send — returns the Message ID once durably queued (fails typed while
@@ -96,102 +113,33 @@ let sub = ts.onMessage { message in
 }
 ```
 
-Delivery is at least once, in per-sender order. The message is acked only after your handler completes — a throw retries (5 attempts, then a `handlerGaveUp` delivery issue). The library deduplicates on `message.id`; a handler never sees the same message twice. The handler runs off the main actor — don't block the main actor inside it (hop to `MainActor` explicitly for UI work); a blocked main actor stalls delivery, and the relay can see handler latency.
+Delivery is at least once, in per-sender order. The message is acked only after your
+handler completes — a throw retries (5 attempts, then a `handlerGaveUp` delivery
+issue). The library deduplicates on `message.id`; a handler never sees the same
+message twice. The handler runs off the main actor — hop to `MainActor` explicitly for
+UI work; don't block it, a hung handler stalls delivery.
+
+Call `ts.close()` when you're done — it stops the connection and handlers, keeping
+Session State; every later call fails with `TrueSealError.closed`.
 
 ---
 
-### Membership events
+## Reference
 
-```swift
-let sub = ts.onEvent { event in
-    switch event {
-    case .statusChanged(let status, let reason):
-        break // member/created, notJoined/left|removed|destroyed|storeReset …
-    case .membersChanged(let members):
-        break // the whole current list, not deltas
-    case .joinRequest, .connectionChanged, .admissionDropped:
-        break
-    }
-}
-```
+This README is a quickstart. The full reference lives in the docs:
 
-To remove a member (they wipe and rotate automatically):
+- **[Human Docs](https://trueseal.dev/docs/integrate/integrating-trueseal-sync)** —
+  integrating TrueSeal, pairing, membership, sending and receiving, errors and events
+- **[Agent Docs: SDK API reference](https://trueseal.dev/agents/api)** — every public
+  type, method, error case and limit, canonical across all three SDKs (paste-friendly
+  for coding agents; the [Agent Docs tree](https://trueseal.dev/agents/) has the rest)
+- **[Threat Model](https://trueseal.dev/agents/threat-model)** — every security claim,
+  the tests that prove it, and the limitations
+- **[Developer Preview lifecycle](https://trueseal.dev/agents/developer-preview)** —
+  version rules and upgrade notes
 
-```swift
-try ts.remove(memberId: ts.members[0].id)
-```
-
-`ts.leave()` leaves; `ts.destroyGroup()` destroys the group for everyone (durable, forwarded, honoured from any past or present member). In every case the same object reaches `notJoined` and can pair again — no rebuilding.
-
-`ts.close()` stops the connection and handlers, keeping Session State; every later call fails with `TrueSealError.closed`.
-
----
-
-## Errors
-
-Exactly 14 cases, one `TrueSealError` enum, no catch-all — the same list in every SDK (sync ADR-0028 as amended):
-
-`invalidRelayAddress` · `invalidNamespace` · `storage` · `closed` · `notMember(status)` · `alreadyInGroup` · `invalidPairingToken` · `pairingClosed` · `groupFull(max)` · `memberNotFound` · `payloadTooLarge(max)` · `messageHandlerAlreadySet` · `storeTooNew(found, supported)` · `manifestVersionExhausted`
-
-Delivery problems that don't throw arrive on the optional `onDeliveryIssue` stream: `unreadable(reason)`, `unauthorized`, `heldForUpgrade(version)`, `handlerGaveUp(messageId, error)`, `sendFailed(messageId, reason)`.
-
----
-
-## Architecture
-
-```
-Your App
-   │  import TruesealSync
-   ▼
-TrueSeal                    ← idiomatic Swift (this SDK)
-   │  @_implementationOnly import TruesealSyncBindings
-   ▼
-TruesealSyncBindings        ← UniFFI-generated Swift (internal)
-   │
-   ▼
-TruesealSyncFFI.xcframework ← compiled Rust (trueseal-sync + trueseal-noise)
-```
-
-No UniFFI types or FFI concepts appear in the public surface. `TruesealSyncBindings` is an implementation detail — never import it directly.
-
----
-
-## Local development
-
-Requires the sibling repos checked out side-by-side:
-
-```
-trueseal/
-  trueseal-noise/
-  trueseal-sync/
-  trueseal-sync-swift/   ← this repo
-```
-
-```bash
-# One-time: install Rust targets
-rustup target add \
-    aarch64-apple-darwin x86_64-apple-darwin \
-    aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
-
-# Build XCFramework + generate Swift bindings
-bash scripts/build-xcframework.sh
-```
-
-The committed `Package.swift` on main always builds from the local path (the `artifactURL`/`artifactChecksum` constants at the top of the file are empty on main). Release commits have all three constants stamped by `scripts/stamp-package.sh`, so the tagged tree records the exact `url:`+`checksum:` SPM consumers resolve (gates G8/G9).
-
-To stage a release: `gh workflow run release.yml -f version=0.x.x` (add `-f dry_run=true` to build, test and stamp without publishing anything). The [release workflow](.github/workflows/release.yml) downloads the prebuilt XCFramework from the `trueseal-sync` core pinned by `TRUESEAL_SYNC_TAG`, verifies its checksum, builds and tests, stamps the constants, commits the release pin to `release/v0.x.x` (pushed without force), and creates a **draft** candidate release. Promotion (SDK-4) creates the immutable tag `v0.x.x` on that exact commit and publishes the draft — same bytes, no rebuild, and tags are never moved ([sync ADR-0030](https://github.com/julianbonomini/trueseal-sync/blob/main/docs/adr/0030-distribution-channels-and-lockstep-versions.md), [e2e ADR-0002](https://github.com/julianbonomini/trueseal-e2e/blob/main/docs/adr/0002-release-conductor-orchestration.md)). Pushing a tag directly triggers nothing.
-
-> **Note:** `scripts/build-xcframework.sh` is for local development only. CI does not run it — it downloads the prebuilt artifact from [trueseal-sync releases](https://github.com/julianbonomini/trueseal-sync/releases) instead.
-
----
-
-## Further reading
-
-- [trueseal-sync overview](https://trueseal.dev/docs/components/trueseal-sync/overview) — concepts, Group Manifest, pairing ceremony, outbox replay, delivery guarantees
-- [trueseal-sync (Rust core)](https://github.com/julianbonomini/trueseal-sync) — source for the underlying crate
-- [trueseal-relay](https://github.com/julianbonomini/trueseal-relay) — deploying and self-hosting the relay
-- [Swift SDK reference](https://github.com/julianbonomini/trueseal-sync-swift) — full API docs (DocC)
-- [trueseal ecosystem](https://github.com/julianbonomini) — trueseal-noise, trueseal-protocol, trueseal-clip
+Security reports: see [SECURITY.md](SECURITY.md). Hacking on the SDK itself:
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
