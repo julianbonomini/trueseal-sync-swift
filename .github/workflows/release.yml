@@ -1,10 +1,29 @@
 name: Release
 
-# Triggered by a version tag, e.g.: git tag v0.1.0 && git push origin v0.1.0
+# SWIFT-2 / e2e ADR-0002: this is the CANDIDATE build. It is dispatch-only —
+# pushing a tag triggers nothing, and tags are created exactly once, at
+# promotion, on the release commit this workflow produces (SDK-4 owns the
+# promote workflow). Tags are never moved (sync ADR-0030).
+#
+#   candidate:  gh workflow run release.yml -f version=0.6.0 [-f dry_run=true]
+#   promote:    (SDK-4) verify the staged bytes, tag the release commit,
+#               publish the draft release — same bytes, no rebuild.
+#
+# The release commit carries Package.swift with the version/url/checksum
+# constants stamped (scripts/stamp-package.sh) so gates G8/G9 can read the
+# exact artifact URL and checksum out of the tagged tree.
 on:
-  push:
-    tags:
-      - 'v[0-9]*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "SDK release version without the v prefix (lockstep TrueSeal Release, e.g. 0.6.0)"
+        required: true
+        type: string
+      dry_run:
+        description: "Build, test and stamp only — no branch, no release"
+        required: false
+        type: boolean
+        default: false
 
 env:
   TRUESEAL_SYNC_TAG: v0.6.0
@@ -13,12 +32,19 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  candidate:
     runs-on: macos-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Validate version input
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' \
+            || { echo "::error::version must be X.Y.Z without a v prefix (got '$VERSION')"; exit 1; }
 
       # Download the pinned core artifact (xcframework + UniFFI bindings).
       # The bytes are the core release's trueseal-sync-swift-<tag>.zip,
@@ -56,7 +82,7 @@ jobs:
       - name: Swift test
         run: swift test
 
-      # ── Package ──────────────────────────────────────────────────────────────
+      # ── Package ────────────────────────────────────────────────────────────
 
       - name: Zip XCFramework
         run: zip -r TruesealSyncFFI.xcframework.zip TruesealSyncFFI.xcframework
@@ -67,51 +93,78 @@ jobs:
           echo "value=$(swift package compute-checksum TruesealSyncFFI.xcframework.zip)" \
             >> "$GITHUB_OUTPUT"
 
-      # ── Stamp Package.swift ──────────────────────────────────────────────────
-      # Swap path: → url:+checksum: so SPM consumers resolve the remote artifact.
-      # This IS committed back so the published tag always has the correct reference.
-      # Source repo keeps path: for local dev — release workflow stamps on each tag.
+      # ── Stamp the release pin constants (SWIFT-2) ───────────────────────────
+      # version / artifactURL / artifactChecksum at the top of Package.swift.
+      # The URL is deterministic from the version, so the release commit can
+      # be written before the tag (and the release) exist.
 
-      - name: Stamp Package.swift with release URL and checksum
+      - name: Stamp Package.swift constants
         env:
-          TAG:      ${{ github.ref_name }}
+          VERSION:  ${{ inputs.version }}
           CHECKSUM: ${{ steps.checksum.outputs.value }}
           REPO:     ${{ github.repository }}
-        run: |
-          URL="https://github.com/${REPO}/releases/download/${TAG}/TruesealSyncFFI.xcframework.zip"
-          sed -i '' \
-            -e "s|path: \"TruesealSyncFFI.xcframework\"|url: \"${URL}\", checksum: \"${CHECKSUM}\"|" \
-            Package.swift
-          echo "Stamped: $URL ($CHECKSUM)"
+        run: scripts/stamp-package.sh "$VERSION" "$CHECKSUM"
 
-      # ── Commit stamped Package.swift + bindings, retag ───────────────────────
-
-      - name: Commit stamped Package.swift and bindings to main
+      # CI check (G8/G9): the stamped manifest must record THIS candidate's
+      # version in the URL (never a stale one — the old sed flow shipped a
+      # Package.swift still pointing at v0.2.0) and the checksum constant
+      # must equal the checksum of the staged artifact.
+      - name: Verify the stamped release pin
         env:
-          TAG: ${{ github.ref_name }}
+          VERSION:  ${{ inputs.version }}
+          CHECKSUM: ${{ steps.checksum.outputs.value }}
+        run: |
+          grep -q "releases/download/v${VERSION}/TruesealSyncFFI.xcframework.zip" Package.swift \
+            || { echo "::error::stamped URL does not name the candidate version v${VERSION}"; exit 1; }
+          grep -q "^let artifactChecksum = \"${CHECKSUM}\"$" Package.swift \
+            || { echo "::error::stamped checksum does not match the staged artifact"; exit 1; }
+          RECOMPUTED="$(swift package compute-checksum TruesealSyncFFI.xcframework.zip)"
+          [ "$RECOMPUTED" = "$CHECKSUM" ] \
+            || { echo "::error::checksum drift between stamp and verification"; exit 1; }
+          swift package dump-package > /dev/null
+          echo "Release pin verified: v${VERSION} / ${CHECKSUM}"
+
+      - name: Upload stamped Package.swift
+        uses: actions/upload-artifact@v4
+        with:
+          name: stamped-package-swift
+          path: Package.swift
+          if-no-files-found: error
+
+      # ── Release commit + draft release (skipped on dry runs) ────────────────
+      # The release commit lives on a release/v<version> branch, pushed
+      # WITHOUT force — if it already exists this fails, and a re-candidate
+      # for the same version must delete the branch first (a candidate is
+      # staged once per version; promotion never rebuilds).
+
+      - name: Commit the release pin and bindings
+        if: ${{ !inputs.dry_run }}
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "release/v${VERSION}"
           git add Package.swift Sources/TruesealSyncBindings/
-          git diff --cached --quiet \
-            || git commit -m "chore: stamp Package.swift and update bindings for ${TAG} [skip ci]"
-          git push origin HEAD:main
+          git commit -m "chore: release pin for v${VERSION} (url + checksum constants)"
+          git push origin "release/v${VERSION}"
 
-      - name: Move tag to stamped commit
-        env:
-          TAG: ${{ github.ref_name }}
-        run: |
-          git tag -f "$TAG"
-          git push origin "$TAG" --force
-
-      # ── GitHub Release ────────────────────────────────────────────────────────
-
-      - name: Create GitHub Release
+      - name: Create draft candidate release
+        if: ${{ !inputs.dry_run }}
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ inputs.version }}
+          name: TrueSeal ${{ inputs.version }} (candidate)
+          draft: true
+          prerelease: true
+          target_commitish: release/v${{ inputs.version }}
           files: TruesealSyncFFI.xcframework.zip
           body: |
-            **trueseal-sync**: ${{ env.TRUESEAL_SYNC_TAG }}
-            **checksum**: ${{ steps.checksum.outputs.value }}
-          generate_release_notes: true
+            Candidate for the TrueSeal ${{ inputs.version }} lockstep release.
+
+            - **core**: trueseal-sync ${{ env.TRUESEAL_SYNC_TAG }} (checksum-pinned)
+            - **xcframework checksum**: ${{ steps.checksum.outputs.value }}
+            - **release commit**: `release/v${{ inputs.version }}` (Package.swift stamped with the version/url/checksum constants)
+
+            Promotion (SDK-4) creates the immutable tag `v${{ inputs.version }}` on the release commit and publishes this draft — same bytes, no rebuild (e2e ADR-0002).
           fail_on_unmatched_files: true

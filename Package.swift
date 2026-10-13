@@ -1,6 +1,35 @@
 // swift-tools-version: 5.9
 import PackageDescription
 
+// ── Release pin (SWIFT-2) ───────────────────────────────────────────────────
+// These three constants are the SINGLE place a release commit records which
+// XCFramework the binaryTarget resolves to (gates G8/G9).
+//
+// On main, artifactURL and artifactChecksum are EMPTY: the package builds
+// from the local TruesealSyncFFI.xcframework (produced by
+// scripts/build-xcframework.sh, or extracted by CI from the pinned core
+// release — see .github/workflows/ci.yml).
+//
+// The candidate build (.github/workflows/release.yml, via
+// scripts/stamp-package.sh) stamps all three constants and commits the
+// result as the release commit BEFORE the tag exists (e2e ADR-0002 step 2).
+// Promotion (SDK-4) creates the immutable tag on that exact commit — tags
+// are never moved (sync ADR-0030). Do not hand-edit the stamped values.
+let version = "0.6.0"
+let artifactURL = ""
+let artifactChecksum = ""
+
+let truesealSyncFFI: Target = artifactURL.isEmpty
+    ? .binaryTarget(
+        name: "TruesealSyncFFI",
+        path: "TruesealSyncFFI.xcframework"
+    )
+    : .binaryTarget(
+        name: "TruesealSyncFFI",
+        url: artifactURL,
+        checksum: artifactChecksum
+    )
+
 let package = Package(
     name: "TruesealSync",
     platforms: [
@@ -13,15 +42,10 @@ let package = Package(
     ],
     targets: [
         // ── 1. Compiled Rust binary (XCFramework) ────────────────────────────
-        // Source state uses path: — the XCFramework is produced locally by
-        // scripts/build-xcframework.sh, or extracted by CI from the pinned
-        // trueseal-sync core release (see .github/workflows/ci.yml).
-        // The release workflow stamps url:+checksum: on the tag for SPM
-        // consumers. Do not commit a url: form here.
-        .binaryTarget(
-            name: "TruesealSyncFFI",
-            path: "TruesealSyncFFI.xcframework"
-        ),
+        // path: on main (artifactURL empty); url:+checksum: on a release
+        // commit (stamped by scripts/stamp-package.sh). See the release pin
+        // constants at the top of this file.
+        truesealSyncFFI,
 
         // ── 2. Generated UniFFI Swift bindings ────────────────────────────────
         // trueseal_sync.swift is produced by `uniffi-bindgen generate`.

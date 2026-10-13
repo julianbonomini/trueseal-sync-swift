@@ -177,11 +177,9 @@ rustup target add \
 bash scripts/build-xcframework.sh
 ```
 
-The committed `Package.swift` already points at the local path; the release workflow stamps `url:`+`checksum:` on each tag for SPM consumers.
+The committed `Package.swift` on main always builds from the local path (the `artifactURL`/`artifactChecksum` constants at the top of the file are empty on main). Release commits have all three constants stamped by `scripts/stamp-package.sh`, so the tagged tree records the exact `url:`+`checksum:` SPM consumers resolve (gates G8/G9).
 
-Don't commit that — the published `Package.swift` uses `url:+checksum:` so SPM resolves correctly for remote consumers.
-
-To cut a release: `git tag v0.x.x && git push origin v0.x.x`. The [release workflow](.github/workflows/release.yml) downloads the prebuilt XCFramework from the `trueseal-sync` release pinned by `TRUESEAL_SYNC_TAG`, attaches it to the GitHub Release, and stamps `Package.swift` with the correct `url`/`checksum` before retagging.
+To stage a release: `gh workflow run release.yml -f version=0.x.x` (add `-f dry_run=true` to build, test and stamp without publishing anything). The [release workflow](.github/workflows/release.yml) downloads the prebuilt XCFramework from the `trueseal-sync` core pinned by `TRUESEAL_SYNC_TAG`, verifies its checksum, builds and tests, stamps the constants, commits the release pin to `release/v0.x.x` (pushed without force), and creates a **draft** candidate release. Promotion (SDK-4) creates the immutable tag `v0.x.x` on that exact commit and publishes the draft — same bytes, no rebuild, and tags are never moved ([sync ADR-0030](https://github.com/julianbonomini/trueseal-sync/blob/main/docs/adr/0030-distribution-channels-and-lockstep-versions.md), [e2e ADR-0002](https://github.com/julianbonomini/trueseal-e2e/blob/main/docs/adr/0002-release-conductor-orchestration.md)). Pushing a tag directly triggers nothing.
 
 > **Note:** `scripts/build-xcframework.sh` is for local development only. CI does not run it — it downloads the prebuilt artifact from [trueseal-sync releases](https://github.com/julianbonomini/trueseal-sync/releases) instead.
 

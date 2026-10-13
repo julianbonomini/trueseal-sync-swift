@@ -77,3 +77,19 @@ jobs:
             echo "::error::hand-written version/limit literal in SDK sources — values must come from the core's FFI statics (SDK-3)"
             exit 1
           fi
+
+      # SWIFT-2: main is always source state — the release pin constants must
+      # be present and artifactURL EMPTY (a stamped url: form on main means a
+      # release commit leaked back; SPM consumers get the stamped form only
+      # from the immutable tag). The release-side check (stamped URL names
+      # the candidate version + checksum matches the staged artifact) runs in
+      # release.yml.
+      - name: Package.swift release pin is in source state
+        run: |
+          grep -q '^let version = "[0-9]\+\.[0-9]\+\.[0-9]\+"$' Package.swift \
+            || { echo "::error::Package.swift is missing the version constant (SWIFT-2)"; exit 1; }
+          grep -q '^let artifactURL = ""$' Package.swift \
+            || { echo "::error::artifactURL is stamped on main — main must stay in path: source state (SWIFT-2)"; exit 1; }
+          grep -q '^let artifactChecksum = ""$' Package.swift \
+            || { echo "::error::artifactChecksum is stamped on main — main must stay in path: source state (SWIFT-2)"; exit 1; }
+          swift package dump-package > /dev/null
