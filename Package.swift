@@ -47,7 +47,9 @@ let package = Package(
         .testTarget(
             name: "TruesealSyncTests",
             dependencies: ["TruesealSync"],
-            path: "Tests/TruesealSyncTests"
+            path: "Tests/TruesealSyncTests",
+            exclude: ["Vectors/README.md"],
+            resources: [.copy("Vectors/sync-v1.json")]
         ),
     ]
 )
