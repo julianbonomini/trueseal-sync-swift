@@ -52,3 +52,15 @@ jobs:
 
       - name: Swift test
         run: swift test
+
+      # SDK-3: TrueSeal.info / maxPayloadBytes / maxGroupSize are pass-throughs
+      # of the core's FFI statics. No version or limit literal may be
+      # hand-written in the SDK sources — drift is impossible by construction
+      # and this grep keeps it that way (the generated TruesealSyncBindings
+      # directory is the core's own output and is excluded by path).
+      - name: No hand-written version or limit literals in SDK sources
+        run: |
+          if grep -REn '61440|61_440|65519|65_519|"[0-9]+\.[0-9]+\.[0-9]+"' Sources/TruesealSync/; then
+            echo "::error::hand-written version/limit literal in SDK sources — values must come from the core's FFI statics (SDK-3)"
+            exit 1
+          fi

@@ -70,6 +70,19 @@ final class TrueSealApiTests: XCTestCase {
         XCTAssertEqual(info.endToEndVersion, 1)
     }
 
+    /// SDK-3 drift pin: the public statics must BE the linked core's values,
+    /// not hand-maintained copies. If anyone replaces a pass-through with a
+    /// literal, this fails CI even when the literal happens to be right today.
+    func test_infoAndLimits_areTheLinkedCoreValues() {
+        let ffi = TruesealSyncBindings.truesealInfo()
+        let info = TrueSeal.info
+        XCTAssertEqual(info.sdkVersion, ffi.sdkVersion)
+        XCTAssertEqual(info.transportVersion, ffi.transportVersion)
+        XCTAssertEqual(info.endToEndVersion, ffi.endToEndVersion)
+        XCTAssertEqual(TrueSeal.maxPayloadBytes, TruesealSyncBindings.truesealMaxPayloadBytes())
+        XCTAssertEqual(TrueSeal.maxGroupSize, TruesealSyncBindings.truesealMaxGroupSize())
+    }
+
     // MARK: - Relay Address parsing (ADR-0028 grammar)
 
     func test_parseRelayAddress_validString() throws {
