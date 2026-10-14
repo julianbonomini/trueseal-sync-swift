@@ -155,7 +155,7 @@ extension Member {
 }
 
 extension JoinRequest {
-    init(_ ffi: TruesealSyncBindings.JoinRequest) {
+    init(_ ffi: TruesealSyncBindings.MemberRequest) {
         self.init(id: ffi.id, name: ffi.name)
     }
 }
