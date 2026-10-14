@@ -47,7 +47,7 @@ env:
   # release tag + the sha256 of the core release's PUBLISHED zip, COMMITTED
   # here (a repo variable is mutable without review; it can never be the pin).
   TRUESEAL_SYNC_TAG: v0.6.0
-  TRUESEAL_SYNC_ZIP_SHA256: 61557fb4b084087ee6fbd757647c0cef604adb45144cc7a98e03c6d5ebf6c3c8
+  TRUESEAL_SYNC_ZIP_SHA256: ea050baf939fda79da7327f2c5e6b068c4f74156655b84c9f1159e910aad66c3
 
 permissions:
   contents: write

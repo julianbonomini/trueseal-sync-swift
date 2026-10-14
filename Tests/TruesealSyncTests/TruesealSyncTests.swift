@@ -511,7 +511,7 @@ final class TrueSealApiTests: XCTestCase {
         let ffiEvents: [TruesealSyncBindings.TrueSealEvent] = [
             .statusChanged(status: .destroying, reason: .destroyed),
             .membersChanged(members: [TruesealSyncBindings.Member(id: "m1", name: "n1")]),
-            .joinRequest(request: TruesealSyncBindings.JoinRequest(id: "j1", name: "jn")),
+            .joinRequest(request: TruesealSyncBindings.MemberRequest(id: "j1", name: "jn")),
             .connectionChanged(connection: .relayVersionUnsupported(min: 1, max: 1)),
             .admissionDropped(name: "x", reason: .groupFull),
         ]

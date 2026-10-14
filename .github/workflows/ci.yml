@@ -17,7 +17,7 @@ env:
   # mirror, and CONTRIBUTING.md documents the one-line flip back to a direct
   # cross-repo download once the token is refreshed.
   TRUESEAL_SYNC_TAG: v0.6.0
-  TRUESEAL_SYNC_ZIP_SHA256: 61557fb4b084087ee6fbd757647c0cef604adb45144cc7a98e03c6d5ebf6c3c8
+  TRUESEAL_SYNC_ZIP_SHA256: ea050baf939fda79da7327f2c5e6b068c4f74156655b84c9f1159e910aad66c3
   # The vendored G12 canonical facts (Parity/shared-facts.json — refresh
   # procedure in Parity/README.md).
   SHARED_FACTS_SHA256: 159491b8a563c6928d564458c898e2c5e815e3e291091bc7e6342624031fe62a

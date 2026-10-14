@@ -1070,72 +1070,6 @@ public func FfiConverterTypeTrueSeal_lower(_ value: TrueSeal) -> UnsafeMutableRa
 }
 
 /**
- * The admitter's view of a Pair that proved knowledge of the Pairing
- * Secret (ADR-0023). Pass `id` back to `accept()` to admit the device.
- * An unaccepted request disappears when the Pairing Window closes.
- */
-public struct JoinRequest {
-    public var id: String
-    public var name: String
-
-    /// Default memberwise initializers are never public by default, so we
-    /// declare one manually.
-    public init(id: String, name: String) {
-        self.id = id
-        self.name = name
-    }
-}
-
-extension JoinRequest: Equatable, Hashable {
-    public static func == (lhs: JoinRequest, rhs: JoinRequest) -> Bool {
-        if lhs.id != rhs.id {
-            return false
-        }
-        if lhs.name != rhs.name {
-            return false
-        }
-        return true
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(id)
-        hasher.combine(name)
-    }
-}
-
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeJoinRequest: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> JoinRequest {
-        return
-            try JoinRequest(
-                id: FfiConverterString.read(from: &buf),
-                name: FfiConverterString.read(from: &buf)
-            )
-    }
-
-    public static func write(_ value: JoinRequest, into buf: inout [UInt8]) {
-        FfiConverterString.write(value.id, into: &buf)
-        FfiConverterString.write(value.name, into: &buf)
-    }
-}
-
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-public func FfiConverterTypeJoinRequest_lift(_ buf: RustBuffer) throws -> JoinRequest {
-    return try FfiConverterTypeJoinRequest.lift(buf)
-}
-
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-public func FfiConverterTypeJoinRequest_lower(_ value: JoinRequest) -> RustBuffer {
-    return FfiConverterTypeJoinRequest.lower(value)
-}
-
-/**
  * A group member (ADR-0028). `id` is stable and opaque, derived from the
  * member's signing public key; `name` is auto-generated from the key.
  */
@@ -1198,6 +1132,76 @@ public func FfiConverterTypeMember_lift(_ buf: RustBuffer) throws -> Member {
 #endif
 public func FfiConverterTypeMember_lower(_ value: Member) -> RustBuffer {
     return FfiConverterTypeMember.lower(value)
+}
+
+/**
+ * The admitter's view of a Pair that proved knowledge of the Pairing
+ * Secret (ADR-0023). Pass `id` back to `accept()` to admit the device.
+ * An unaccepted request disappears when the Pairing Window closes.
+ *
+ * Named `MemberRequest` at the binding level (not `JoinRequest`) so generated
+ * Kotlin does not self-shadow against the nested `TrueSealEvent.JoinRequest`
+ * variant class (G0; the canonical event CASE name `joinRequest` is unchanged).
+ */
+public struct MemberRequest {
+    public var id: String
+    public var name: String
+
+    /// Default memberwise initializers are never public by default, so we
+    /// declare one manually.
+    public init(id: String, name: String) {
+        self.id = id
+        self.name = name
+    }
+}
+
+extension MemberRequest: Equatable, Hashable {
+    public static func == (lhs: MemberRequest, rhs: MemberRequest) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(name)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMemberRequest: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MemberRequest {
+        return
+            try MemberRequest(
+                id: FfiConverterString.read(from: &buf),
+                name: FfiConverterString.read(from: &buf)
+            )
+    }
+
+    public static func write(_ value: MemberRequest, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMemberRequest_lift(_ buf: RustBuffer) throws -> MemberRequest {
+    return try FfiConverterTypeMemberRequest.lift(buf)
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMemberRequest_lower(_ value: MemberRequest) -> RustBuffer {
+    return FfiConverterTypeMemberRequest.lower(value)
 }
 
 /**
@@ -2219,7 +2223,7 @@ public enum TrueSealEvent {
      * A device requested to join inside the open Pairing Window
      * (ADR-0023).
      */
-    case joinRequest(request: JoinRequest)
+    case joinRequest(request: MemberRequest)
     /**
      * The relay link transitioned.
      */
@@ -2244,7 +2248,7 @@ public struct FfiConverterTypeTrueSealEvent: FfiConverterRustBuffer {
 
         case 2: return try .membersChanged(members: FfiConverterSequenceTypeMember.read(from: &buf))
 
-        case 3: return try .joinRequest(request: FfiConverterTypeJoinRequest.read(from: &buf))
+        case 3: return try .joinRequest(request: FfiConverterTypeMemberRequest.read(from: &buf))
 
         case 4: return try .connectionChanged(connection: FfiConverterTypeConnectionState.read(from: &buf))
 
@@ -2267,7 +2271,7 @@ public struct FfiConverterTypeTrueSealEvent: FfiConverterRustBuffer {
 
         case let .joinRequest(request):
             writeInt(&buf, Int32(3))
-            FfiConverterTypeJoinRequest.write(request, into: &buf)
+            FfiConverterTypeMemberRequest.write(request, into: &buf)
 
         case let .connectionChanged(connection):
             writeInt(&buf, Int32(4))
