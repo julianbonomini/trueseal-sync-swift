@@ -51,7 +51,8 @@ public struct RelayAddress: Equatable, Sendable {
 /// A delivered message (ADR-0026).
 public struct TrueSealMessage: Equatable, Sendable {
     /// Stable, unique per sender (`tsm1_…`). The library deduplicates on it;
-    /// a handler never sees the same message twice.
+    /// a handler sees the same message twice only after a crash mid-handling
+    /// (at-least-once, ADR-0026).
     public let id: String
     public let from: Member
     public let body: Data
