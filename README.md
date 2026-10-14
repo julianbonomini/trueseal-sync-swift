@@ -115,8 +115,8 @@ let sub = ts.onMessage { message in
 
 Delivery is at least once, in per-sender order. The message is acked only after your
 handler completes — a throw retries (5 attempts, then a `handlerGaveUp` delivery
-issue). The library deduplicates on `message.id`; a handler never sees the same
-message twice. The handler runs off the main actor — hop to `MainActor` explicitly for
+issue). The library deduplicates on `message.id`; a handler sees the same message
+twice only after a crash mid-handling (at-least-once, ADR-0026). The handler runs off the main actor — hop to `MainActor` explicitly for
 UI work; don't block it, a hung handler stalls delivery. The same rule applies to
 `onEvent` / `onDeliveryIssue` listeners, which share one FFI listener bus: return
 promptly — a listener parked longer than the core's liveness window (~75 s) wedges
