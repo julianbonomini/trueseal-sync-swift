@@ -80,7 +80,12 @@ public final class TrueSeal {
             if let refreshed = try? core.me() { me = Member(refreshed) }
             if newStatus != .member { members = [] }
         case .membersChanged(let newMembers):
-            members = newMembers
+            // The core's event payload carries the full manifest list, SELF
+            // INCLUDED, while the core's members() getter excludes self
+            // (ADR-0028: members lists every OTHER member). Filter self so
+            // the event path and refreshState agree — the e2e Scenario
+            // Suite caught public members flipping to self-included here.
+            members = newMembers.filter { $0.id != me.id }
         case .connectionChanged(let newConnection):
             connection = newConnection
         case .joinRequest, .admissionDropped:

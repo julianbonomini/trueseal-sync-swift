@@ -311,6 +311,79 @@ final class TrueSealApiTests: XCTestCase {
         joiner.close()
     }
 
+    /// D29 (e2e#22 finding): ADR-0028 — members lists every OTHER member.
+    /// The core's membersChanged event payload carries the full manifest
+    /// list SELF INCLUDED, while core.members() excludes self. The SDK's
+    /// event path stored the payload verbatim, so `members` flipped to
+    /// self-INCLUDED the moment an event arrived (e2e probe: a.members == 2
+    /// in a 2-device group; TS/Kotlin report 1). Both paths must agree.
+    @MainActor
+    func test_members_excludesSelf_beforeAndAfterEvents_againstLiveRelay() async throws {
+        let relay = try RelayFixture.start()
+        defer { relay.stop() }
+
+        let admitter = try await TrueSeal.open(relay: relay.address, storage: makeStorage(), namespace: "mem-a")
+        let joiner = try await TrueSeal.open(relay: relay.address, storage: makeStorage(), namespace: "mem-b")
+
+        let joinRequest = expectation(description: "admitter sees joinRequest")
+        joinRequest.assertForOverFulfill = false
+        let admitterMembersChanged = expectation(description: "admitter sees membersChanged after accept")
+        admitterMembersChanged.assertForOverFulfill = false
+        let lock = NSLock()
+        var requestId: String?
+        let sub = try admitter.onEvent { event in
+            switch event {
+            case .joinRequest(let request):
+                lock.lock()
+                if requestId == nil { requestId = request.id; joinRequest.fulfill() }
+                lock.unlock()
+            case .membersChanged:
+                admitterMembersChanged.fulfill()
+            default:
+                break
+            }
+        }
+
+        let joinerMembersChanged = expectation(description: "joiner sees membersChanged on admission")
+        joinerMembersChanged.assertForOverFulfill = false
+        let jsub = try joiner.onEvent { event in
+            if case .membersChanged = event { joinerMembersChanged.fulfill() }
+        }
+
+        let token = try admitter.startPairing()
+        try joiner.join(token: token)
+        await fulfillment(of: [joinRequest], timeout: 20)
+        lock.lock()
+        let id = requestId
+        lock.unlock()
+        try admitter.accept(requestId: try XCTUnwrap(id))
+
+        await fulfillment(of: [admitterMembersChanged, joinerMembersChanged], timeout: 20)
+
+        // After the event: self must NOT appear (RED on the unfixed code —
+        // applyStateChange stored the event payload verbatim, self included).
+        let admitterAfterEvent = admitter.members
+        XCTAssertFalse(admitterAfterEvent.contains { $0.id == admitter.me.id },
+                       "members must exclude self after membersChanged (ADR-0028; e2e found self included)")
+        XCTAssertEqual(admitterAfterEvent.map(\.id), [joiner.me.id],
+                       "a 2-device group reports exactly the OTHER member")
+        let joinerAfterEvent = joiner.members
+        XCTAssertFalse(joinerAfterEvent.contains { $0.id == joiner.me.id },
+                       "the joiner's members must also exclude self after the event")
+        XCTAssertEqual(joinerAfterEvent.map(\.id), [admitter.me.id])
+
+        // Both paths agree: a refreshState-driving synchronous call must not
+        // change the answer the event path produced.
+        _ = try admitter.startPairing() // opens a new window; synchronous → refreshState()
+        XCTAssertEqual(admitter.members, admitterAfterEvent,
+                       "event path and refreshState path must agree (both exclude self)")
+
+        sub.cancel()
+        jsub.cancel()
+        admitter.close()
+        joiner.close()
+    }
+
     @MainActor
     func test_onEvent_connectionTransitions_againstLiveRelay() async throws {
         let relay = try RelayFixture.start()
